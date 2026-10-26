@@ -1,0 +1,12 @@
+product_id,product_name,category,temp_min_c,temp_max_c
+P-0001,Insulin Vials,Pharma,2.0,8.0
+P-0002,Vaccines,Pharma,2.0,8.0
+P-0003,Fresh Dairy,Food,1.0,6.0
+P-0004,Chilled Meat,Food,0.0,5.0
+P-0005,Fresh Produce,Food,2.0,8.0
+P-0006,Frozen Chicken,Frozen Food,-22.0,-18.0
+P-0007,Frozen Seafood,Frozen Food,-25.0,-18.0
+P-0008,Ice Cream,Frozen Food,-25.0,-18.0
+P-0009,Packaged Dry Goods,Ambient,,
+P-0010,Electronics,Ambient,,
+P-0011,Bottled Water,Ambient,,

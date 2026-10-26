@@ -1,0 +1,4 @@
+route_id,route_name,road_name,origin_osm_id,dest_osm_id,waypoints,expected_duration_min
+R-01,Cairo - Alexandria (Desert Road),Cairo-Alexandria Desert Road,5581000001,5581000002,[],170
+R-02,Cairo - Ain Sokhna Port,Cairo-Ain Sokhna Road,5581000001,5581000003,[],100
+R-03,Cairo - Assiut,Cairo-Assiut Western Road,5581000001,5581000004,[],330

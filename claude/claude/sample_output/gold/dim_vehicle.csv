@@ -1,0 +1,60 @@
+vehicle_key,vehicle_id,plate_no,vehicle_type,reefer_unit_id,fleet_status,home_depot,valid_from,valid_to,is_current
+1001,VH-00001,FVL 8612,Reefer Truck 10T,RF-0001,Active,Alexandria-Borg El Arab,2026-01-01,9999-12-31,True
+1002,VH-00002,GTK 9270,Reefer Truck 10T,RF-0002,Active,Alexandria-Borg El Arab,2026-01-01,2026-03-04,False
+1003,VH-00002,GTK 9270,Reefer Truck 10T,RF-0002,In Maintenance,Alexandria-Borg El Arab,2026-03-04,2026-03-08,False
+1004,VH-00002,GTK 9270,Reefer Truck 10T,RF-0002,Active,Alexandria-Borg El Arab,2026-03-08,9999-12-31,True
+1005,VH-00003,XTL 5246,Dry Van 12T,,Active,Alexandria-Borg El Arab,2026-01-01,2026-11-01,False
+1006,VH-00003,XTL 5246,Dry Van 12T,,In Maintenance,Alexandria-Borg El Arab,2026-11-01,9999-12-31,True
+1007,VH-00004,TMP 5499,Reefer Truck 10T,RF-0004,Active,Alexandria-Borg El Arab,2026-01-01,2026-08-05,False
+1008,VH-00004,TMP 5499,Reefer Truck 10T,RF-0004,In Maintenance,Alexandria-Borg El Arab,2026-08-05,2026-08-09,False
+1009,VH-00004,TMP 5499,Reefer Truck 10T,RF-0004,Active,Alexandria-Borg El Arab,2026-08-09,9999-12-31,True
+1010,VH-00005,FHX 2320,Reefer Truck 10T,RF-0005,Active,Cairo-6Oct,2026-01-01,2026-05-22,False
+1011,VH-00005,FHX 2320,Reefer Truck 10T,RF-0005,In Maintenance,Cairo-6Oct,2026-05-22,2026-05-24,False
+1012,VH-00005,FHX 2320,Reefer Truck 10T,RF-0005,Active,Cairo-6Oct,2026-05-24,9999-12-31,True
+1013,VH-00006,SSB 7678,Reefer Truck 10T,RF-0006,Active,Cairo-Nasr City,2026-01-01,2026-05-02,False
+1014,VH-00006,SSB 7678,Reefer Truck 10T,RF-0006,In Maintenance,Cairo-Nasr City,2026-05-02,2026-05-06,False
+1015,VH-00006,SSB 7678,Reefer Truck 10T,RF-0006,Active,Cairo-Nasr City,2026-05-06,2026-06-06,False
+1016,VH-00006,SSB 7678,Reefer Truck 10T,RF-0006,In Maintenance,Cairo-Nasr City,2026-06-06,2026-06-09,False
+1017,VH-00006,SSB 7678,Reefer Truck 10T,RF-0006,Active,Cairo-Nasr City,2026-06-09,9999-12-31,True
+1018,VH-00007,BVJ 1320,Dry Van 12T,,Active,Alexandria-Borg El Arab,2026-01-01,2026-04-16,False
+1019,VH-00007,BVJ 1320,Dry Van 12T,,In Maintenance,Alexandria-Borg El Arab,2026-04-16,2026-04-20,False
+1020,VH-00007,BVJ 1320,Dry Van 12T,,Active,Alexandria-Borg El Arab,2026-04-20,9999-12-31,True
+1021,VH-00008,LYG 7389,Dry Van 12T,,Active,Cairo-Nasr City,2026-01-01,2026-05-27,False
+1022,VH-00008,LYG 7389,Dry Van 12T,,In Maintenance,Cairo-Nasr City,2026-05-27,2026-05-30,False
+1023,VH-00008,LYG 7389,Dry Van 12T,,Active,Cairo-Nasr City,2026-05-30,9999-12-31,True
+1024,VH-00009,TNP 4613,Reefer Truck 10T,RF-0009,Active,Cairo-Nasr City,2026-01-01,2026-07-21,False
+1025,VH-00009,TNP 4613,Reefer Truck 10T,RF-0009,In Maintenance,Cairo-Nasr City,2026-07-21,2026-07-22,False
+1026,VH-00009,TNP 4613,Reefer Truck 10T,RF-0009,Active,Cairo-Nasr City,2026-07-22,9999-12-31,True
+1027,VH-00010,LJR 7624,Dry Van 12T,,Active,Cairo-Nasr City,2026-01-01,9999-12-31,True
+1028,VH-00011,ZMX 1444,Reefer Truck 10T,RF-0011,Active,Cairo-Nasr City,2026-01-01,2026-09-01,False
+1029,VH-00011,ZMX 1444,Reefer Truck 10T,RF-0011,In Maintenance,Cairo-Nasr City,2026-09-01,2026-09-05,False
+1030,VH-00011,ZMX 1444,Reefer Truck 10T,RF-0011,Active,Cairo-Nasr City,2026-09-05,9999-12-31,True
+1031,VH-00012,XDF 6363,Reefer Truck 10T,RF-0012,Active,Cairo-Nasr City,2026-01-01,2026-08-24,False
+1032,VH-00012,XDF 6363,Reefer Truck 10T,RF-0012,In Maintenance,Cairo-Nasr City,2026-08-24,2026-08-28,False
+1033,VH-00012,XDF 6363,Reefer Truck 10T,RF-0012,Active,Cairo-Nasr City,2026-08-28,9999-12-31,True
+1034,VH-00013,TJT 7906,Reefer Truck 10T,RF-0013,Active,Cairo-6Oct,2026-01-01,2026-06-12,False
+1035,VH-00013,TJT 7906,Reefer Truck 10T,RF-0013,In Maintenance,Cairo-6Oct,2026-06-12,2026-06-14,False
+1036,VH-00013,TJT 7906,Reefer Truck 10T,RF-0013,Active,Cairo-6Oct,2026-06-14,2026-09-19,False
+1037,VH-00013,TJT 7906,Reefer Truck 10T,RF-0013,In Maintenance,Cairo-6Oct,2026-09-19,2026-09-20,False
+1038,VH-00013,TJT 7906,Reefer Truck 10T,RF-0013,Active,Cairo-6Oct,2026-09-20,9999-12-31,True
+1039,VH-00014,AMZ 6733,Reefer Truck 10T,RF-0014,Active,Cairo-6Oct,2026-01-01,2026-06-30,False
+1040,VH-00014,AMZ 6733,Reefer Truck 10T,RF-0014,In Maintenance,Cairo-6Oct,2026-06-30,2026-07-03,False
+1041,VH-00014,AMZ 6733,Reefer Truck 10T,RF-0014,Active,Cairo-6Oct,2026-07-03,9999-12-31,True
+1042,VH-00015,TYE 1333,Reefer Truck 10T,RF-0015,Active,Cairo-6Oct,2026-01-01,2026-05-30,False
+1043,VH-00015,TYE 1333,Reefer Truck 10T,RF-0015,In Maintenance,Cairo-6Oct,2026-05-30,2026-06-03,False
+1044,VH-00015,TYE 1333,Reefer Truck 10T,RF-0015,Active,Cairo-6Oct,2026-06-03,9999-12-31,True
+1045,VH-00016,LCY 8619,Reefer Truck 10T,RF-0016,Active,Cairo-Nasr City,2026-01-01,2026-03-31,False
+1046,VH-00016,LCY 8619,Reefer Truck 10T,RF-0016,In Maintenance,Cairo-Nasr City,2026-03-31,2026-04-02,False
+1047,VH-00016,LCY 8619,Reefer Truck 10T,RF-0016,Active,Cairo-Nasr City,2026-04-02,9999-12-31,True
+1048,VH-00017,PZS 3683,Dry Van 12T,,Active,Cairo-6Oct,2026-01-01,2026-04-19,False
+1049,VH-00017,PZS 3683,Dry Van 12T,,In Maintenance,Cairo-6Oct,2026-04-19,2026-04-21,False
+1050,VH-00017,PZS 3683,Dry Van 12T,,Active,Cairo-6Oct,2026-04-21,9999-12-31,True
+1051,VH-00018,AGR 7149,Reefer Truck 10T,RF-0018,Active,Alexandria-Borg El Arab,2026-01-01,2026-03-26,False
+1052,VH-00018,AGR 7149,Reefer Truck 10T,RF-0018,In Maintenance,Alexandria-Borg El Arab,2026-03-26,2026-03-28,False
+1053,VH-00018,AGR 7149,Reefer Truck 10T,RF-0018,Active,Alexandria-Borg El Arab,2026-03-28,9999-12-31,True
+1054,VH-00019,BSP 2669,Reefer Truck 10T,RF-0019,Active,Cairo-Nasr City,2026-01-01,2026-05-17,False
+1055,VH-00019,BSP 2669,Reefer Truck 10T,RF-0019,In Maintenance,Cairo-Nasr City,2026-05-17,2026-05-18,False
+1056,VH-00019,BSP 2669,Reefer Truck 10T,RF-0019,Active,Cairo-Nasr City,2026-05-18,9999-12-31,True
+1057,VH-00020,UUN 1672,Reefer Truck 10T,RF-0020,Active,Cairo-Nasr City,2026-01-01,2026-03-12,False
+1058,VH-00020,UUN 1672,Reefer Truck 10T,RF-0020,In Maintenance,Cairo-Nasr City,2026-03-12,2026-03-13,False
+1059,VH-00020,UUN 1672,Reefer Truck 10T,RF-0020,Active,Cairo-Nasr City,2026-03-13,9999-12-31,True

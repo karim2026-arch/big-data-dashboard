@@ -1,0 +1,12 @@
+product_key,product_id,product_name,category,temp_min_c,temp_max_c,temp_zone,is_reefer
+41,P-0001,Insulin Vials,Pharma,2.0,8.0,PHARMA_COLD,True
+42,P-0002,Vaccines,Pharma,2.0,8.0,PHARMA_COLD,True
+43,P-0003,Fresh Dairy,Food,1.0,6.0,CHILLED,True
+44,P-0004,Chilled Meat,Food,0.0,5.0,CHILLED,True
+45,P-0005,Fresh Produce,Food,2.0,8.0,CHILLED,True
+46,P-0006,Frozen Chicken,Frozen Food,-22.0,-18.0,FROZEN,True
+47,P-0007,Frozen Seafood,Frozen Food,-25.0,-18.0,FROZEN,True
+48,P-0008,Ice Cream,Frozen Food,-25.0,-18.0,FROZEN,True
+49,P-0009,Packaged Dry Goods,Ambient,,,AMBIENT,False
+50,P-0010,Electronics,Ambient,,,AMBIENT,False
+51,P-0011,Bottled Water,Ambient,,,AMBIENT,False

@@ -1,0 +1,21 @@
+customer_key,customer_id,customer_name,segment,city,contract_tier
+31,C-0031,"Watts, Robinson and Nguyen",Retail,Alexandria,Gold
+32,C-0032,Perez Inc,Pharma,Giza,Silver
+33,C-0033,Morales-Jones,Food Service,Giza,Platinum
+34,C-0034,"Walter, Edwards and Rios",Pharma,Alexandria,Silver
+35,C-0035,Wilkerson-Day,Pharma,Cairo,Silver
+36,C-0036,Baker and Sons,Food Service,Assiut,Platinum
+37,C-0037,"Hoffman, Baker and Richards",Pharma,Suez,Gold
+38,C-0038,"Ross, Robinson and Bright",Pharma,Cairo,Gold
+39,C-0039,"Snyder, Campos and Callahan",Food Service,Suez,Gold
+40,C-0040,Burton Ltd,Wholesale,Suez,Gold
+41,C-0041,Carlson-Cruz,Food Service,Cairo,Gold
+42,C-0042,"Ferrell, Rice and Maddox",Retail,Assiut,Platinum
+43,C-0043,Frazier Inc,Wholesale,Assiut,Gold
+44,C-0044,"Dyer, Potter and Mack",Retail,Suez,Silver
+45,C-0045,Rodriguez-Graham,Food Service,Suez,Platinum
+46,C-0046,Smith-Bowen,Retail,Suez,Gold
+47,C-0047,"Baker, Mason and White",Retail,Giza,Silver
+48,C-0048,Harrell LLC,Wholesale,Suez,Gold
+49,C-0049,"Romero, Gonzalez and Brooks",Wholesale,Cairo,Gold
+50,C-0050,Ryan PLC,Food Service,Giza,Gold

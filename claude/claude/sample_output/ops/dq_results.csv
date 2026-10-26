@@ -1,0 +1,17 @@
+check_id,run_id,table_name,check_name,status,failed_rows,checked_ts
+1,run-20261102-dq,bronze_telemetry_raw,event_id is unique,FAIL,2,2026-11-02 23:30:00
+2,run-20261102-dq,bronze_telemetry_raw,speed_kmh not null,PASS,0,2026-11-02 23:30:00
+3,run-20261102-dq,bronze_telemetry_raw,lat/lon not null,FAIL,1,2026-11-02 23:30:00
+4,run-20261102-dq,silver_telemetry_clean,event_id is unique,PASS,0,2026-11-02 23:30:00
+5,run-20261102-dq,silver_telemetry_clean,speed_kmh between 0 and 200,PASS,0,2026-11-02 23:30:00
+6,run-20261102-dq,silver_telemetry_clean,every reading assigned to a trip,PASS,0,2026-11-02 23:30:00
+7,run-20261102-dq,silver_reefer_clean,"(sensor_id, source_sequence) is unique",PASS,0,2026-11-02 23:30:00
+8,run-20261102-dq,silver_reefer_clean,cargo_temp_c between -40 and 40,PASS,0,2026-11-02 23:30:00
+9,run-20261102-dq,fact_telemetry,FK vehicle_key/driver_key/route_key/segment_key resolve,PASS,0,2026-11-02 23:30:00
+10,run-20261102-dq,fact_telemetry,vehicle was 'Active' at event time (SCD2 point-in-time),PASS,0,2026-11-02 23:30:00
+11,run-20261102-dq,fact_trip,FK vehicle_key/driver_key/route_key resolve,PASS,0,2026-11-02 23:30:00
+12,run-20261102-dq,fact_shipment_delivery,FK trip/customer/origin/dest resolve,PASS,0,2026-11-02 23:30:00
+13,run-20261102-dq,fact_shipment_delivery,grain: shipment_id is unique,PASS,0,2026-11-02 23:30:00
+14,run-20261102-dq,fact_shipment_item,FK shipment_key/product_key resolve,PASS,0,2026-11-02 23:30:00
+15,run-20261102-dq,fact_fuel_transaction,FK vehicle/driver/location resolve,PASS,0,2026-11-02 23:30:00
+16,run-20261102-dq,fact_fuel_transaction,price within 5% of official price,FAIL,1,2026-11-02 23:30:00

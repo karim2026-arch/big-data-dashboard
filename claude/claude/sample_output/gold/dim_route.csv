@@ -1,0 +1,4 @@
+route_key,route_id,route_name,origin_location_key,dest_location_key,distance_km,expected_duration_min,corridor_type
+1,R-01,Cairo - Alexandria (Desert Road),10,11,194.5,170,Highway
+2,R-02,Cairo - Ain Sokhna Port,10,12,122.5,100,Highway
+3,R-03,Cairo - Assiut,10,13,333.0,330,Highway

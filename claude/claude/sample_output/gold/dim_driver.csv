@@ -1,0 +1,25 @@
+driver_key,driver_id,full_name,license_class,hire_date,shift,valid_from,valid_to,is_current
+201,D-0101,Allison Hill,Heavy,2024-04-17,Day,2026-01-01,9999-12-31,True
+202,D-0102,Noah Rhodes,Heavy,2019-09-16,Day,2026-01-01,9999-12-31,True
+203,D-0103,Angie Henderson,Heavy,2022-07-30,Day,2026-01-01,2026-08-26,False
+204,D-0103,Angie Henderson,Heavy,2022-07-30,Night,2026-08-26,9999-12-31,True
+205,D-0104,Daniel Wagner,Heavy,2023-11-14,Day,2026-01-01,2026-04-19,False
+206,D-0104,Daniel Wagner,Heavy,2023-11-14,Night,2026-04-19,9999-12-31,True
+207,D-0105,Cristian Santos,Heavy,2023-03-22,Day,2026-01-01,9999-12-31,True
+208,D-0106,Connie Lawrence,Heavy,2021-10-02,Day,2026-01-01,9999-12-31,True
+209,D-0107,Abigail Shaffer,Heavy,2019-07-30,Day,2026-01-01,9999-12-31,True
+210,D-0108,Gina Moore,Heavy,2023-11-23,Day,2026-01-01,9999-12-31,True
+211,D-0109,Gabrielle Davis,Heavy,2019-01-26,Day,2026-01-01,9999-12-31,True
+212,D-0110,Ryan Munoz,Heavy,2022-03-21,Day,2026-01-01,9999-12-31,True
+213,D-0111,Monica Herrera,Heavy,2020-08-05,Day,2026-01-01,9999-12-31,True
+214,D-0112,Jamie Arnold,Heavy,2021-08-19,Day,2026-01-01,9999-12-31,True
+215,D-0113,Lisa Hensley,Heavy,2021-09-07,Day,2026-01-01,2026-04-14,False
+216,D-0113,Lisa Hensley,Heavy,2021-09-07,Night,2026-04-14,9999-12-31,True
+217,D-0114,Michele Williams,Heavy,2021-06-21,Day,2026-01-01,9999-12-31,True
+218,D-0115,Dylan Miller,Heavy,2020-11-28,Day,2026-01-01,9999-12-31,True
+219,D-0116,Brian Ramirez,Heavy,2020-01-13,Day,2026-01-01,2026-08-04,False
+220,D-0116,Brian Ramirez,Heavy,2020-01-13,Night,2026-08-04,9999-12-31,True
+221,D-0117,Holly Wood,Heavy,2024-05-31,Day,2026-01-01,9999-12-31,True
+222,D-0118,Derek Zuniga,Heavy,2019-04-16,Day,2026-01-01,9999-12-31,True
+223,D-0119,Lisa Jackson,Heavy,2020-06-01,Day,2026-01-01,9999-12-31,True
+224,D-0120,Carla Gray,Heavy,2024-04-11,Day,2026-01-01,9999-12-31,True
