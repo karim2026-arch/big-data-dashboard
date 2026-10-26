@@ -1,3 +1,0 @@
-event_key,vehicle_key,trip_key,shipment_key,vehicle_id,start_ts,end_ts,duration_min,max_temp_c,threshold_c,severity
-610001,1009,700002,810002,VH-00004,2026-11-02 10:01:02,2026-11-02 10:31:02,30.0,11.0,6.0,High
-610002,1030,700003,810003,VH-00011,2026-11-02 06:06:02,2026-11-02 06:36:02,30.0,10.0,5.0,High

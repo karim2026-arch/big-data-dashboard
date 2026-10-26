@@ -1,0 +1,20 @@
+# secrets
+*.pem
+*.p8
+*.pub
+.env
+.env.*
+profiles.yml
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# python
+__pycache__/
+.venv/
+venv/
+
+# local outputs
+tools/s3_survey.txt
