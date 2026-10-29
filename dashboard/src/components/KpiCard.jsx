@@ -5,7 +5,7 @@ function Trend({ value, previous, unit, better }) {
   if (value == null || previous == null || value === previous) return <span className="text-slate-500">no change vs previous</span>
   const up = value > previous
   const good = better == null ? null : (better === 'up') === up
-  const color = good == null ? 'text-slate-400' : good ? 'text-emerald-400' : 'text-rose-400'
+  const color = good == null ? 'text-slate-600 dark:text-slate-400' : good ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
   const change =
     unit === '%'
       ? `${Math.abs(value - previous).toFixed(1)} pp`
@@ -22,13 +22,13 @@ function Trend({ value, previous, unit, better }) {
 export function KpiCard({ kpiId, value, previous }) {
   const kpi = KPIS[kpiId]
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
-      <div className="text-xs font-medium text-slate-400">
-        {kpi.name} <span className="text-slate-600">#{kpiId}</span>
+    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
+      <div className="text-xs font-medium text-slate-600 dark:text-slate-400">
+        {kpi.name} <span className="text-slate-400 dark:text-slate-600">#{kpiId}</span>
       </div>
       <div className="mt-1 flex items-baseline gap-1.5">
-        <span className="text-2xl font-semibold text-slate-100">{formatValue(value, kpi.unit)}</span>
-        <span className="text-sm text-slate-400">{kpi.unit}</span>
+        <span className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{formatValue(value, kpi.unit)}</span>
+        <span className="text-sm text-slate-600 dark:text-slate-400">{kpi.unit}</span>
       </div>
       <div className="mt-1 text-xs">
         <Trend value={value} previous={previous} unit={kpi.unit} better={kpi.better} />

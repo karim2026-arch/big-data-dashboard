@@ -1,13 +1,16 @@
 import { Line } from '@react-three/drei'
 import { useMemo } from 'react'
 import * as THREE from 'three'
+import { useTheme } from '../hooks/useTheme'
 import { project } from './projection'
 
 const SEGMENTS = 32
+const CITY_COLOR = { light: '#334155', dark: '#e2e8f0' }
 
 // One arc per lane (rows need origin_/destination_ latitude + longitude).
 // heightOf(lane) and colorOf(lane) decide what the arc encodes; onHover(lane | null) reports the pointed lane.
 export default function RouteArcs({ lanes, heightOf, colorOf, onHover }) {
+  const { theme } = useTheme()
   const arcs = useMemo(
     () =>
       lanes.map((lane) => {
@@ -42,7 +45,7 @@ export default function RouteArcs({ lanes, heightOf, colorOf, onHover }) {
       {cities.map(([city, position]) => (
         <mesh key={city} position={position}>
           <sphereGeometry args={[0.2, 12, 12]} />
-          <meshStandardMaterial color="#e2e8f0" />
+          <meshStandardMaterial color={CITY_COLOR[theme]} />
         </mesh>
       ))}
     </group>

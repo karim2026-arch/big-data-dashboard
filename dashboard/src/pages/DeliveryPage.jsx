@@ -23,10 +23,10 @@ function LaneMap({ lanes }) {
       <MapCanvas>
         <RouteArcs lanes={lanes} heightOf={arcHeight} colorOf={arcColor} onHover={setHovered} />
       </MapCanvas>
-      <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-slate-900/90 px-3 py-2 text-xs text-slate-300">
+      <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-white/90 px-3 py-2 text-xs text-slate-700 dark:bg-slate-900/90 dark:text-slate-300">
         {hovered ? (
           <>
-            <div className="font-semibold text-slate-100">{lane(hovered)}</div>
+            <div className="font-semibold text-slate-900 dark:text-slate-100">{lane(hovered)}</div>
             <div>On-time delivery: {hovered.kpi_1} %</div>
             <div>Deliveries: {hovered.deliveries.toLocaleString('en-US')}</div>
             <div>Typical distance: {hovered.typical_distance_miles.toLocaleString('en-US')} mi</div>

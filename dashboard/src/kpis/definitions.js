@@ -1,74 +1,256 @@
-// KPI catalog: ids, names, units and meanings copied from Notion_Data_Catalog.md (section 3-4).
+// KPI catalog: ids, names, units, meanings, formulas and business actions copied from Notion_Data_Catalog.md (sections 1-4).
 // The backend sends only { kpi_id, value, previous }; everything a viewer reads comes from here.
 // better: 'up' = higher is good, 'down' = lower is good, null = neutral.
+// question: key in QUESTIONS (why we track the KPI). action: catalog "Business action"; when missing, the group's decisions apply.
 
 export const KPIS = {
   // A. Delivery
-  1: { name: 'On-Time Delivery Rate', unit: '%', better: 'up', meaning: 'Share of deliveries that started within the 15-min grace period.' },
-  2: { name: 'On-Time Pickup Rate', unit: '%', better: 'up', meaning: 'Share of pickups that started within the 15-min grace period.' },
-  3: { name: 'Average Delivery Delay', unit: 'min', better: 'down', meaning: 'Average positive delay of late deliveries (early ones excluded).' },
-  4: { name: 'Late Delivery Rate', unit: '%', better: 'down', meaning: 'Share of deliveries later than the grace period.' },
-  5: { name: 'Severe Delay Rate', unit: '%', better: 'down', meaning: 'Share of deliveries later than the severe threshold (assumption: 120 min).' },
-  6: { name: 'Destination Queue Time', unit: 'min', better: 'down', meaning: 'Wait at destination before unloading starts.' },
-  7: { name: 'Dock Time', unit: 'min', better: 'down', meaning: 'Average loading/unloading time (detention_minutes).' },
-  8: { name: 'Trip Duration Variance', unit: '%', better: 'down', meaning: 'Actual vs planned trip hours. Compare lanes, not absolute value.' },
-  9: { name: 'Distance Variance', unit: '%', better: 'down', meaning: 'Actual vs typical route miles.' },
+  1: {
+    name: 'On-Time Delivery Rate', unit: '%', better: 'up', meaning: 'Share of deliveries that started within the 15-min grace period.',
+    question: 'Q1', formula: 'Deliveries with on_time_flag = true / eligible deliveries × 100', action: 'Investigate low-performing lanes and customers.',
+  },
+  2: {
+    name: 'On-Time Pickup Rate', unit: '%', better: 'up', meaning: 'Share of pickups that started within the 15-min grace period.',
+    question: 'Q1', formula: 'Pickups with on_time_flag = true / eligible pickups × 100', action: 'Find loading and dispatch delays that start the trip late.',
+  },
+  3: {
+    name: 'Average Delivery Delay', unit: 'min', better: 'down', meaning: 'Average positive delay of late deliveries (early ones excluded).',
+    question: 'Q1', formula: 'Sum of positive delays (actual_datetime − scheduled_datetime) / eligible deliveries', action: 'Prioritize recurring delays.',
+  },
+  5: {
+    name: 'Severe Delay Rate', unit: '%', better: 'down', meaning: 'Share of deliveries later than the severe threshold (assumption: 120 min).',
+    question: 'Q1', formula: 'Deliveries delayed more than 120 min / eligible deliveries × 100',
+  },
+  6: {
+    name: 'Destination Queue Time', unit: 'min', better: 'down', meaning: 'Wait at destination before unloading starts.',
+    question: 'Q2', formula: 'Delivery actual_datetime − trips.arrival_ts', action: 'Identify facilities and cities with long waiting times (a major source of lost driver hours).',
+  },
+  7: {
+    name: 'Dock Time', unit: 'min', better: 'down', meaning: 'Average loading/unloading time (detention_minutes).',
+    question: 'Q2', formula: 'Average of delivery_events.detention_minutes (Pickup and Delivery)', action: 'Review slow facilities and negotiate detention fees.',
+  },
+  8: {
+    name: 'Trip Duration Variance', unit: '%', better: 'down', meaning: 'Actual vs planned trip hours. Compare lanes, not absolute value.',
+    question: 'Q4', formula: '(Actual hours − Planned hours) / Planned hours × 100', action: 'Review inaccurate time estimates and lanes with recurring overruns.',
+  },
 
   // B. Cold chain
-  10: { name: 'Cold Chain Compliance (readings)', unit: '%', better: 'up', meaning: 'Share of valid reefer readings inside the allowed range.' },
-  11: { name: 'Shipment Cold Chain Compliance', unit: '%', better: 'up', meaning: 'Share of refrigerated loads with no confirmed excursion.' },
-  12: { name: 'Temperature Excursions', unit: 'count', better: 'down', meaning: 'Distinct events where cargo temperature left the allowed range.' },
-  13: { name: 'Avg Excursion Duration', unit: 'min', better: 'down', meaning: 'Average minutes an excursion lasted.' },
-  14: { name: 'Peak Excursion Severity', unit: '°F', better: 'down', meaning: 'Average peak degrees outside the allowed range.' },
-  15: { name: 'Refrigeration Failure Rate', unit: '%', better: 'down', meaning: 'Share of reefer trips where the compressor stopped too long.' },
-  16: { name: 'Door-Open Exposure', unit: 'min/trip', better: 'down', meaning: 'Minutes with door open per refrigerated trip.' },
-  17: { name: 'Excursion Rate', unit: '%', better: 'down', meaning: 'Share of reefer trips with an excursion, by ambient temperature band.' },
+  10: {
+    name: 'Cold Chain Compliance (readings)', unit: '%', better: 'up', meaning: 'Share of valid reefer readings inside the allowed range.',
+    question: 'Q5', formula: 'Valid readings inside the allowed range / all valid readings × 100 (null cargo_temp_f excluded)',
+  },
+  11: {
+    name: 'Shipment Cold Chain Compliance', unit: '%', better: 'up', meaning: 'Share of refrigerated loads with no confirmed excursion.',
+    question: 'Q5', formula: 'Refrigerated loads with no confirmed excursion / all refrigerated loads × 100',
+  },
+  12: {
+    name: 'Temperature Excursions', unit: 'count', better: 'down', meaning: 'Distinct events where cargo temperature left the allowed range.',
+    question: 'Q5', formula: 'Count of distinct out-of-range events (at least 2 consecutive readings outside the range)',
+  },
+  13: {
+    name: 'Avg Excursion Duration', unit: 'min', better: 'down', meaning: 'Average minutes an excursion lasted.',
+    question: 'Q5', formula: 'Average of (excursion end − excursion start)',
+  },
+  14: {
+    name: 'Peak Excursion Severity', unit: '°F', better: 'down', meaning: 'Average peak degrees outside the allowed range.',
+    question: 'Q5', formula: 'Average of the peak per excursion: temp − max allowed (above range) or min allowed − temp (below range)',
+  },
+  15: {
+    name: 'Refrigeration Failure Rate', unit: '%', better: 'down', meaning: 'Share of reefer trips where the compressor stopped too long.',
+    question: 'Q6', formula: 'Reefer trips with compressor_on = false too long while cargo_temp_f > setpoint + deadband / all reefer trips × 100',
+    action: 'Identify trailers needing inspection.',
+  },
+  16: {
+    name: 'Door-Open Exposure', unit: 'min/trip', better: 'down', meaning: 'Minutes with door open per refrigerated trip.',
+    question: 'Q6', formula: 'Readings with door_open = true × reading interval / refrigerated trips', action: 'Reduce door-open time during loading and unloading.',
+  },
+  17: {
+    name: 'Excursion Rate', unit: '%', better: 'down', meaning: 'Share of reefer trips with an excursion, by ambient temperature band.',
+    question: 'Q6', formula: 'Reefer trips with an excursion / all reefer trips × 100, per ambient_temp_f band (<50, 50-70, 70-90, >90 °F)',
+    action: 'Prepare for high-risk heat periods.',
+  },
 
   // C. Fuel & cost
-  19: { name: 'Total Fuel Spend', unit: 'USD', better: null, meaning: 'Sum of fuel card purchases (bought, not burned).' },
-  20: { name: 'Fuel Cost per Mile', unit: 'USD/mi', better: 'down', meaning: 'Fuel cost of completed trips divided by their miles.' },
-  21: { name: 'Fuel Efficiency', unit: 'mpg', better: 'up', meaning: 'Miles per gallon. Expected range 5.8-7.8.' },
-  22: { name: 'Fuel Price Variance', unit: '%', better: 'down', meaning: 'Price paid vs reference diesel price (same state).' },
-  23: { name: 'Idle Fuel', unit: 'gal', better: 'down', meaning: 'Gallons burned with engine on and truck not moving.' },
-  24: { name: 'Idle Time Share', unit: '%', better: 'down', meaning: 'Idle hours as a share of trip hours.' },
-  26: { name: 'Revenue per Mile', unit: 'USD/mi', better: 'up', meaning: 'Load revenue + surcharge + accessorials per mile.' },
-  27: { name: 'Fuel Cost % of Revenue', unit: '%', better: 'down', meaning: 'Trip fuel cost as a share of load revenue.' },
-  28: { name: 'Margin Proxy per Trip', unit: 'USD', better: 'up', meaning: 'Revenue - fuel - maintenance. A proxy, not profit.' },
+  19: {
+    name: 'Total Fuel Spend', unit: 'USD', better: null, meaning: 'Sum of fuel card purchases (bought, not burned).',
+    question: 'Q8', formula: 'Sum of fuel_purchases.total_cost',
+  },
+  20: {
+    name: 'Fuel Cost per Mile', unit: 'USD/mi', better: 'down', meaning: 'Fuel cost of completed trips divided by their miles.',
+    question: 'Q8', formula: 'Fuel cost of completed trips / miles of completed trips',
+  },
+  21: {
+    name: 'Fuel Efficiency', unit: 'mpg', better: 'up', meaning: 'Miles per gallon. Expected range 5.8-7.8.',
+    question: 'Q9', formula: 'trips.actual_distance_miles / trips.fuel_gallons_used', action: 'Find trucks and routes that burn more fuel than similar ones.',
+  },
+  22: {
+    name: 'Fuel Price Variance', unit: '%', better: 'down', meaning: 'Price paid vs reference diesel price (same state).',
+    question: 'Q10', formula: '(fuel_purchases.price_per_gallon − diesel_prices.price_per_gallon) / diesel_prices.price_per_gallon × 100',
+  },
+  23: {
+    name: 'Idle Fuel', unit: 'gal', better: 'down', meaning: 'Gallons burned with engine on and truck not moving.',
+    question: 'Q9', formula: 'Sum of telemetry.fuel_gph × interval where engine_on = true and speed_mph ≈ 0',
+  },
+  24: {
+    name: 'Idle Time Share', unit: '%', better: 'down', meaning: 'Idle hours as a share of trip hours.',
+    question: 'Q9', formula: 'trips.idle_time_hours / trips.actual_duration_hours × 100',
+  },
+  26: {
+    name: 'Revenue per Mile', unit: 'USD/mi', better: 'up', meaning: 'Load revenue + surcharge + accessorials per mile.',
+    question: 'Q11', formula: '(loads.revenue + loads.fuel_surcharge + loads.accessorial_charges) / trips.actual_distance_miles',
+  },
+  27: {
+    name: 'Fuel Cost % of Revenue', unit: '%', better: 'down', meaning: 'Trip fuel cost as a share of load revenue.',
+    question: 'Q11', formula: 'Trip fuel cost / total load revenue × 100',
+  },
+  28: {
+    name: 'Margin Proxy per Trip', unit: 'USD', better: 'up', meaning: 'Revenue - fuel - maintenance. A proxy, not profit.',
+    question: 'Q11', formula: 'Total load revenue − fuel cost − allocated maintenance cost',
+  },
 
   // D. Utilization & safety
-  29: { name: 'Truck Utilization', unit: '%', better: 'up', meaning: 'Productive time share. Low by design (60 h between loads): compare trucks.' },
-  30: { name: 'Miles per Truck per Day', unit: 'mi', better: 'up', meaning: 'Trip miles / (trucks x days).' },
-  33: { name: 'Speeding Events', unit: 'per 100 mi', better: 'down', meaning: 'Speed above 70 mph (assumption, no road limits in data).' },
-  34: { name: 'Excessive Idling Events', unit: 'count', better: 'down', meaning: 'Engine on, speed ~0 for over 30 min (assumption).' },
-  35: { name: 'Route Deviation Rate', unit: '%', better: 'down', meaning: 'Trips with at least one confirmed deviation (> 5 mi, assumption).' },
-  36: { name: 'Incident Rate', unit: 'per 1M mi', better: 'down', meaning: 'Safety incidents per million miles. Expected ~1.4.' },
-  38: { name: 'Claim Cost', unit: 'USD', better: 'down', meaning: 'Sum of safety_incidents.claim_amount.' },
+  29: {
+    name: 'Truck Utilization', unit: '%', better: 'up', meaning: 'Productive time share. Low by design (60 h between loads): compare trucks.',
+    question: 'Q12', formula: 'Time driving, loading and unloading / total available time × 100',
+  },
+  30: {
+    name: 'Miles per Truck per Day', unit: 'mi', better: 'up', meaning: 'Trip miles / (trucks x days).',
+    question: 'Q12', formula: 'Sum of trips.actual_distance_miles / (number of trucks × days in period)',
+  },
+  33: {
+    name: 'Speeding Events', unit: 'per 100 mi', better: 'down', meaning: 'Speed above 70 mph (assumption, no road limits in data).',
+    question: 'Q13', formula: 'Speeding events (speed_mph > 70 for N consecutive readings) / miles traveled × 100',
+  },
+  34: {
+    name: 'Excessive Idling Events', unit: 'count', better: 'down', meaning: 'Engine on, speed ~0 for over 30 min (assumption).',
+    question: 'Q13', formula: 'Count of periods with engine_on = true and speed ≈ 0 for more than 30 min (outside loading/unloading)',
+    action: 'Coaching and idle-reduction policy.',
+  },
+  35: {
+    name: 'Route Deviation Rate', unit: '%', better: 'down', meaning: 'Trips with at least one confirmed deviation (> 5 mi, assumption).',
+    question: 'Q4', formula: 'Trips with a GPS point > 5 mi from the origin-destination line / eligible trips × 100',
+  },
+  36: {
+    name: 'Incident Rate', unit: 'per 1M mi', better: 'down', meaning: 'Safety incidents per million miles. Expected ~1.4.',
+    question: 'Q14', formula: 'Count of safety_incidents / miles traveled × 1,000,000',
+  },
+  38: {
+    name: 'Claim Cost', unit: 'USD', better: 'down', meaning: 'Sum of safety_incidents.claim_amount.',
+    question: 'Q14', formula: 'Sum of safety_incidents.claim_amount',
+  },
 
   // E. Maintenance
-  41: { name: 'Total Maintenance Cost', unit: 'USD', better: 'down', meaning: 'Labor + parts cost of all maintenance orders.' },
-  42: { name: 'Maintenance Downtime', unit: 'h', better: 'down', meaning: 'Total hours trucks were out of service.' },
-  43: { name: 'Orders per Truck', unit: 'orders', better: 'down', meaning: 'Maintenance orders per truck in the period (~8/year expected).' },
-  44: { name: 'Maintenance Cost per Mile', unit: 'USD/mi', better: 'down', meaning: 'Maintenance cost / miles in the same period.' },
-  46: { name: 'Truck Availability', unit: '%', better: 'up', meaning: 'Share of fleet time not in maintenance.' },
+  41: {
+    name: 'Total Maintenance Cost', unit: 'USD', better: 'down', meaning: 'Labor + parts cost of all maintenance orders.',
+    question: 'Q15', formula: 'Sum of maintenance_records.total_cost (labor_cost + parts_cost)',
+  },
+  42: {
+    name: 'Maintenance Downtime', unit: 'h', better: 'down', meaning: 'Total hours trucks were out of service.',
+    question: 'Q15', formula: 'Sum of maintenance_records.downtime_hours',
+  },
+  43: {
+    name: 'Orders per Truck', unit: 'orders', better: 'down', meaning: 'Maintenance orders per truck in the period (~8/year expected).',
+    question: 'Q15', formula: 'Count of maintenance_records / number of trucks in the period',
+  },
+  44: {
+    name: 'Maintenance Cost per Mile', unit: 'USD/mi', better: 'down', meaning: 'Maintenance cost / miles in the same period.',
+    question: 'Q8', formula: 'Maintenance cost in the period / miles traveled in the same period',
+  },
+  46: {
+    name: 'Truck Availability', unit: '%', better: 'up', meaning: 'Share of fleet time not in maintenance.',
+    question: 'Q15', formula: 'Time not in maintenance / total fleet time × 100',
+  },
 
   // G. Anomaly detection quality (against gen_anomaly_labels)
-  51: { name: 'Detection Precision', unit: '%', better: 'up', meaning: 'Correct detections / all flagged by our rules.' },
-  52: { name: 'Detection Recall', unit: '%', better: 'up', meaning: 'Correct detections / all injected anomalies.' },
-  53: { name: 'Time-to-Detect', unit: 'min', better: 'down', meaning: 'Our detection time - label start_ts.' },
+  51: {
+    name: 'Detection Precision', unit: '%', better: 'up', meaning: 'Correct detections / all flagged by our rules.',
+    question: 'Outcome 6', formula: 'Correctly detected anomalies / all anomalies flagged by our rules × 100',
+  },
+  52: {
+    name: 'Detection Recall', unit: '%', better: 'up', meaning: 'Correct detections / all injected anomalies.',
+    question: 'Outcome 6', formula: 'Correctly detected anomalies / all injected anomalies in gen_anomaly_labels × 100',
+  },
+  53: {
+    name: 'Time-to-Detect', unit: 'min', better: 'down', meaning: 'Our detection time - label start_ts.',
+    question: 'Outcome 6', formula: 'Our detection timestamp − label start_ts',
+  },
 
   // Platform
-  54: { name: 'Ingestion Throughput', unit: 'events/s', better: 'up', meaning: 'Stream events ingested per second.' },
-  55: { name: 'End-to-End Latency', unit: 's', better: 'down', meaning: 'ingest_ts to available in Snowflake.' },
-  56: { name: 'Data Completeness', unit: '%', better: 'up', meaning: 'Expected rows that arrived.' },
-  57: { name: 'Duplicate Rate', unit: '%', better: 'down', meaning: 'Duplicate rows removed in staging (~0.3-0.4% injected).' },
-  58: { name: 'Rejection Rate', unit: '%', better: 'down', meaning: 'Rows sent to quarantine (malformed).' },
-  59: { name: 'S3 vs Snowflake Gap', unit: 'rows', better: 'down', meaning: 'Row-count difference between S3 and RAW.' },
-  60: { name: 'Data Freshness', unit: 'min', better: 'down', meaning: 'Minutes since the last successful load.' },
-  61: { name: 'Pipeline Success Rate', unit: '%', better: 'up', meaning: 'Successful orchestrated runs / all runs.' },
-  62: { name: 'dbt Test Pass Rate', unit: '%', better: 'up', meaning: 'Passed dbt tests / all tests.' },
-  63: { name: 'API Success Rate', unit: '%', better: 'up', meaning: 'Successful external API calls (EIA, Open-Meteo).' },
-  64: { name: 'Warehouse Cost', unit: 'credits', better: 'down', meaning: 'Snowflake credits used this month.' },
+  54: {
+    name: 'Ingestion Throughput', unit: 'events/s', better: 'up', meaning: 'Stream events ingested per second.',
+    question: 'Outcome 7', formula: 'Stream events ingested / seconds in the window',
+  },
+  55: {
+    name: 'End-to-End Latency', unit: 's', better: 'down', meaning: 'ingest_ts to available in Snowflake.',
+    question: 'Outcome 7', formula: 'Time the row is available in Snowflake − ingest_ts',
+  },
+  56: {
+    name: 'Data Completeness', unit: '%', better: 'up', meaning: 'Expected rows that arrived.',
+    question: 'Outcome 7', formula: 'Rows that arrived / expected rows × 100',
+  },
+  57: {
+    name: 'Duplicate Rate', unit: '%', better: 'down', meaning: 'Duplicate rows removed in staging (~0.3-0.4% injected).',
+    question: 'Outcome 7', formula: 'Duplicate rows / all received rows × 100',
+  },
+  58: {
+    name: 'Rejection Rate', unit: '%', better: 'down', meaning: 'Rows sent to quarantine (malformed).',
+    question: 'Outcome 7', formula: 'Quarantined rows / all received rows × 100',
+  },
+  59: {
+    name: 'S3 vs Snowflake Gap', unit: 'rows', better: 'down', meaning: 'Row-count difference between S3 and RAW.',
+    question: 'Outcome 7', formula: '|Rows in S3 files − rows in Snowflake RAW|', action: 'Prove that Airbyte moved everything (check per table and per day).',
+  },
+  60: {
+    name: 'Data Freshness', unit: 'min', better: 'down', meaning: 'Minutes since the last successful load.',
+    question: 'Outcome 7', formula: 'Now − time of the last successful load',
+  },
+  61: {
+    name: 'Pipeline Success Rate', unit: '%', better: 'up', meaning: 'Successful orchestrated runs / all runs.',
+    question: 'Outcome 7', formula: 'Successful runs / all scheduled runs × 100 (Airflow, Airbyte, dbt)',
+  },
+  62: {
+    name: 'dbt Test Pass Rate', unit: '%', better: 'up', meaning: 'Passed dbt tests / all tests.',
+    question: 'Outcome 7', formula: 'Passing dbt tests / all dbt tests × 100',
+  },
+  63: {
+    name: 'API Success Rate', unit: '%', better: 'up', meaning: 'Successful external API calls (EIA, Open-Meteo).',
+    question: 'Outcome 7', formula: 'Successful requests / all requests × 100 (Open-Meteo, EIA)',
+  },
+  64: {
+    name: 'Warehouse Cost', unit: 'credits', better: 'down', meaning: 'Snowflake credits used this month.',
+    question: 'Outcome 7', formula: 'Sum of Snowflake credits used in the month', action: 'Track against a Resource Monitor limit.',
+  },
 }
+
+// Why we track each KPI: the catalog's business questions (section 2) and, for detection and platform KPIs, its primary outcomes (section 1).
+export const QUESTIONS = {
+  Q1: 'Are we picking up and delivering on time?',
+  Q2: 'Why are deliveries late?',
+  Q4: 'Are routes performing as planned?',
+  Q5: 'Are refrigerated loads kept within the safe temperature range?',
+  Q6: 'Which trucks, trailers, routes, and conditions carry the highest cold-chain risk?',
+  Q8: 'What does it cost to run the fleet?',
+  Q9: 'Which trucks and routes are the least fuel-efficient?',
+  Q10: 'Are fuel purchases consistent with expected prices and usage?',
+  Q11: 'Are we profitable per mile?',
+  Q12: 'Are we using the fleet efficiently?',
+  Q13: 'Which driving behaviors create risk?',
+  Q14: 'How frequent and costly are safety incidents?',
+  Q15: 'Are trucks going out of service too often?',
+  'Outcome 6': 'Detect route deviations, excessive idling, speeding, and refrigeration failures.',
+  'Outcome 7': 'Provide reliable, timely, and traceable data for decisions.',
+}
+
+// KPI sections as numbered in the catalog (ids from..to). decisions: catalog "Business decisions enabled", used when a KPI has no own action.
+export const KPI_GROUPS = [
+  { title: 'A. Delivery Performance', from: 1, to: 9, decisions: 'Better dispatch planning, more realistic delivery promises, customer service priorities, and lane review.' },
+  { title: 'B. Cold Chain', from: 10, to: 18, decisions: 'Equipment inspection, dock/door procedures, priority handling of high-risk loads, claims prevention.' },
+  { title: 'C. Fuel & Cost', from: 19, to: 28, decisions: 'Route and driving-behavior optimization, fuel-stop policy, truck allocation, pricing review.' },
+  { title: 'D. Fleet Utilization & Driver Safety', from: 29, to: 40, decisions: 'Driver coaching, truck assignment, safety program priorities.' },
+  { title: 'E. Maintenance & Reliability', from: 41, to: 47, decisions: 'Preventive maintenance planning and availability management.' },
+  { title: 'G. Anomaly Detection Quality', from: 51, to: 53, decisions: 'Tune the detection rules per anomaly type (labels are used only for evaluation, never inside the rules).' },
+  { title: 'Data Platform & Pipeline', from: 54, to: 64, decisions: 'Check the data behind the business KPIs is trustworthy and timely before acting on it.' },
+]
 
 // Anomaly families injected by the generator (gen_anomaly_labels.anomaly_type), with map colors.
 export const ANOMALY_TYPES = {

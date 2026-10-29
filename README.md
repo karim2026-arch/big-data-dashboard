@@ -186,3 +186,4 @@ The stream list is finalized from a bucket survey: [tools/s3_survey.py](tools/s3
 - Private keys live outside the repository (for example `~/.snowflake_keys/`).
 - Add `*.pem`, `*.p8`, `.env` and `profiles.yml` to `.gitignore`.
 - If a key is exposed, deactivate and replace it in IAM immediately.
+# big-data-dashboard

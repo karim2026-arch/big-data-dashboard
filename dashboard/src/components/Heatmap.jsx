@@ -11,11 +11,11 @@ export default function Heatmap({ rows, rowKey, colKey, valueKey, min, max, unit
       <table className="border-separate border-spacing-0.5 text-[10px]">
         <thead>
           <tr>
-            <th className="sticky left-0 bg-slate-900 pr-2 text-left align-bottom font-normal text-slate-500">
+            <th className="sticky left-0 bg-white pr-2 text-left align-bottom font-normal text-slate-500 dark:bg-slate-900">
               {rowKey} ↓ / {colKey} →
             </th>
             {colValues.map((col) => (
-              <th key={col} className="h-24 px-0.5 align-bottom font-normal text-slate-400">
+              <th key={col} className="h-24 px-0.5 align-bottom font-normal text-slate-600 dark:text-slate-400">
                 <div className="rotate-180 [writing-mode:vertical-rl]">{col}</div>
               </th>
             ))}
@@ -24,7 +24,7 @@ export default function Heatmap({ rows, rowKey, colKey, valueKey, min, max, unit
         <tbody>
           {rowValues.map((rowValue) => (
             <tr key={rowValue}>
-              <th className="sticky left-0 whitespace-nowrap bg-slate-900 pr-2 text-left font-normal text-slate-400">{rowValue}</th>
+              <th className="sticky left-0 whitespace-nowrap bg-white pr-2 text-left font-normal text-slate-600 dark:bg-slate-900 dark:text-slate-400">{rowValue}</th>
               {colValues.map((col) => {
                 const value = cells.get(`${rowValue}|${col}`)
                 return (

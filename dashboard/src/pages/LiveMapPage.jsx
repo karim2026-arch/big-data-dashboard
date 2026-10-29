@@ -31,9 +31,9 @@ function FieldRows({ row, fields }) {
     const value = row[column]
     const text = typeof value === 'boolean' ? yesNo(value) : value == null ? 'missing' : `${value}${unit ? ` ${unit}` : ''}`
     return (
-      <div key={column} className="flex justify-between gap-2 border-b border-slate-800/60 py-1">
+      <div key={column} className="flex justify-between gap-2 border-b border-slate-100 py-1 dark:border-slate-800/60">
         <span className="text-slate-500">{column}</span>
-        <span className="text-slate-200">{text}</span>
+        <span className="text-slate-800 dark:text-slate-200">{text}</span>
       </div>
     )
   })
@@ -64,9 +64,9 @@ export default function LiveMapPage() {
           </div>
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
             {Object.entries(STATUS_STYLE).map(([status, style]) => (
-              <span key={status} className="flex items-center gap-1.5 text-slate-400">
+              <span key={status} className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400">
                 <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: style.color }} />
-                {style.label}: <span className="text-slate-200">{counts[status].toLocaleString('en-US')}</span> trucks
+                {style.label}: <span className="text-slate-800 dark:text-slate-200">{counts[status].toLocaleString('en-US')}</span> trucks
               </span>
             ))}
           </div>
@@ -106,13 +106,13 @@ export default function LiveMapPage() {
                   <button
                     type="button"
                     onClick={() => setSelectedId(alert.vehicle_id)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-slate-800"
+                    className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
                     <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: ANOMALY_TYPES[alert.anomaly_type].color }} />
-                    <span className="flex-1 text-slate-300">
+                    <span className="flex-1 text-slate-700 dark:text-slate-300">
                       {ANOMALY_TYPES[alert.anomaly_type].label} · {alert.vehicle_id}
                     </span>
-                    <span className={alert.end_ts ? 'text-slate-500' : 'text-rose-300'}>
+                    <span className={alert.end_ts ? 'text-slate-500' : 'text-rose-600 dark:text-rose-300'}>
                       {alert.end_ts ? `ended ${alert.end_ts.slice(11, 16)} UTC` : `active since ${alert.start_ts.slice(11, 16)} UTC`}
                     </span>
                   </button>

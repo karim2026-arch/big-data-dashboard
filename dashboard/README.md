@@ -44,6 +44,8 @@ The `series` keys each dashboard expects are in `src/data/mock/dashboards.js`.
 | Change | File |
 |---|---|
 | KPI name / unit / meaning | `src/kpis/definitions.js` (single source) |
+| KPI Guide text (why / formula / action, sections) | `KPIS`, `QUESTIONS`, `KPI_GROUPS` in `src/kpis/definitions.js`; page: `src/pages/KpiGuidePage.jsx` (`/kpi-guide`) |
 | Which KPI cards a page shows | `src/dashboards.js` |
 | Mock KPI numbers | `src/data/mock/kpiValues.js` |
 | Mock fleet size, anomaly rates | `src/data/mock/fleetSimulator.js` (top constants) |
+| Light / dark colors | `dark:` classes in components; JS colors in `CHROME` (`src/components/charts.jsx`) and the `src/scene/*` constants. Theme state: `src/hooks/useTheme.jsx` |

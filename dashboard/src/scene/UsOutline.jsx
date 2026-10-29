@@ -2,13 +2,17 @@ import { useMemo } from 'react'
 import * as THREE from 'three'
 import { mesh } from 'topojson-client'
 import us from 'us-atlas/states-10m.json'
+import { useTheme } from '../hooks/useTheme'
 import { project } from './projection'
+
+const BORDER_COLOR = { light: '#94a3b8', dark: '#334155' }
 
 // Lower-48 bounding box: drops Alaska and Hawaii, which are outside the fleet's corridors.
 const isContiguous = ([lon, lat]) => lon > -125 && lon < -66 && lat > 24 && lat < 50
 
 // State borders drawn as line segments (bundled with the app, no external map service).
 export default function UsOutline() {
+  const { theme } = useTheme()
   const geometry = useMemo(() => {
     const positions = []
     for (const line of mesh(us, us.objects.states).coordinates) {
@@ -23,7 +27,7 @@ export default function UsOutline() {
 
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color="#334155" />
+      <lineBasicMaterial color={BORDER_COLOR[theme]} />
     </lineSegments>
   )
 }
