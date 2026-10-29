@@ -277,7 +277,7 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 
 **Decisions:** one-off script, not an API route · FAIL = orphan key, duplicate key, or a history ID without exactly one `IS_CURRENT` row · WARN = NULL keys.
 
-**Logic:** three lists (`FOREIGN_KEYS` 33, `UNIQUE_KEYS` 18, `HISTORY_DIMS` 2) + three SQL templates, each returning `ROWS_TOTAL, NULL_KEYS, PROBLEM_KEYS`. It reuses the backend login (`backend/app/snowflake_client.py`, `backend/.env`), so there is no second copy of the connection code.
+**Logic:** three lists (`FOREIGN_KEYS` 33, `UNIQUE_KEYS` 18, `HISTORY_DIMS` 2) + three SQL templates, each returning `ROWS_TOTAL, NULL_KEYS, PROBLEM_KEYS`. It reuses the backend login (`backend/app/infrastructure/snowflake_client.py` since the 2026-10-29 restructure, `backend/.env`), so there is no second copy of the connection code.
 
 **Code:**
 ```bash
@@ -305,6 +305,17 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 - All 846 events with a load but no trip are recent (unfinished trips).
 - `RAW_DATA.MAINTENANCE_RECORDS` has only `FACILITY_LOCATION` (a city), with no facility ID, so `FACILITY_KEY` cannot be found.
 - `RAW_DATA.TRIPS` already has an empty `TRUCK_ID` in 34,035 of 1,679,187 rows (2.0%).
+
+### Backend restructure (clean architecture) ✅ (2026-10-29)
+**What I did:** Split the flat `backend/app/` (4 files) into layers so the backend can grow to all 8 dashboards and the stream: `api/` → `services/` → `domain/` (contracts) ← `infrastructure/` (Snowflake), plus `core/` and `schemas/`. KPI SQL moved to `.sql` files. Response schemas added. Same URLs, same JSON. Details: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md).
+
+**Decisions:** clean architecture (option C, chosen over layered / feature modules) · repositories have `Protocol` contracts · only KPI SQL in `.sql` files (health/tables SQL stays in the repository) · JSON keys kept exactly as before (upper-case Snowflake columns) · no tests folder for now · URLs not versioned (no `/api/v1`).
+
+**Logic:** route gets its service from `api/dependencies.py` (`Depends`) → service runs the logic on a contract from `domain/repositories.py` → `infrastructure/repositories/snowflake_*.py` runs the SQL (`sql_loader.load_sql()` for `.sql` files) through `snowflake_client.fetch_all()` → route validates the result with its `schemas/` model.
+
+**Files:** moved (`git mv`): `config.py` → `core/config.py` (`.env` path `parents[1]` → `parents[2]`), `snowflake_client.py` → `infrastructure/snowflake_client.py` (import path), `kpi_validation.py` → `services/kpi_validation_service.py` (SQL out, class `KpiValidationService`) · new: `core/errors.py`, `domain/repositories.py`, `infrastructure/sql_loader.py`, `infrastructure/queries/kpis/{distance_variance,margin_proxy}.sql`, `infrastructure/repositories/snowflake_{system,kpi}_repository.py`, `services/system_service.py`, `schemas/{system,kpi_validation}.py`, `api/{dependencies,router}.py`, `api/routes/{health,tables,kpis}.py`, `__init__.py` per folder, `backend/ARCHITECTURE.md` · changed: `main.py` (only builds the app), `backend/README.md` (flow), `tools/validate_marts.py` line 9 (`from app.infrastructure import snowflake_client`). No `.env` change, no new package.
+
+**Tests done:** responses of `/health`, `/api/tables`, `/api/kpis/validation` saved before the change and compared after: byte-for-byte identical (149 / 2,827 / 597 bytes) ✅ · SQL in the `.sql` files equals the old Python strings ✅ · `/docs` lists the same 3 paths plus 4 schemas ✅ · CORS preflight 200 ✅ · no warnings at startup ✅ · service with a fake repository returns both KPI models ✅ · Snowflake error → 503 ✅ · `tools/validate_marts.py` import works ✅. The server on port 8000 still runs the old code until restarted.
 
 **Still open:**
 - Answers from the owner to the 4 questions in [MARTS_VALIDATION_REPORT.md](MARTS_VALIDATION_REPORT.md#4-questions-for-the-model-owner).

@@ -1,28 +1,9 @@
-"""KPIs calculated on the DBT_MARTS tables over all rows, to validate the model's joins.
-Each KPI returns its value together with join checks (rows matched / unmatched), because a broken join
-can still give a plausible-looking value. Units are as the marts store them (km, USD)."""
-from . import snowflake_client
-
-# KPI 9: (actual_distance_km - typical_distance_km) / typical_distance_km x 100, averaged over trips.
-# Join check: FCT_TRIPS -> DIM_ROUTE on ROUTE_KEY.
-DISTANCE_VARIANCE_SQL = """
-SELECT
-    COUNT(*)                     AS trips_total,
-    COUNT(r.route_key)           AS trips_matched_route,
-    COUNT(*) - COUNT(r.route_key) AS trips_unmatched_route,
-    ROUND(AVG((t.actual_distance_km - r.typical_distance_km) / NULLIF(r.typical_distance_km, 0) * 100), 2)::FLOAT
-                                 AS distance_variance_pct
-FROM fct_trips t
-LEFT JOIN dim_route r ON t.route_key = r.route_key
-"""
-
-# KPI 28: revenue - fuel - allocated maintenance, averaged per trip.
-# revenue     = revenue_usd + fuel_surcharge_usd + accessorial_charges_usd (FCT_TRIPS)
-# fuel        = SUM(FCT_FUEL_PURCHASES.total_cost) of the trip, joined on TRIP_ID
-# maintenance = truck's SUM(FCT_MAINTENANCE.total_cost) x trip km / truck's total trip km (per-km allocation)
-# Trips without TRUCK_KEY are excluded (inner join to truck_distance) and counted.
-# *_all_* columns are the full table totals, to compare with what the KPI used.
-MARGIN_PROXY_SQL = """
+-- KPI 28: revenue - fuel - allocated maintenance, averaged per trip.
+-- revenue     = revenue_usd + fuel_surcharge_usd + accessorial_charges_usd (FCT_TRIPS)
+-- fuel        = SUM(FCT_FUEL_PURCHASES.total_cost) of the trip, joined on TRIP_ID
+-- maintenance = truck's SUM(FCT_MAINTENANCE.total_cost) x trip km / truck's total trip km (per-km allocation)
+-- Trips without TRUCK_KEY are excluded (inner join to truck_distance) and counted.
+-- *_all_* columns are the full table totals, to compare with what the KPI used.
 WITH trip_fuel AS (
     SELECT trip_id, SUM(total_cost) AS fuel_cost
     FROM fct_fuel_purchases
@@ -64,17 +45,3 @@ SELECT
     (SELECT ROUND(SUM(total_cost), 2)::FLOAT FROM fct_maintenance)  AS maintenance_cost_all_orders_usd,
     ROUND(AVG(revenue - fuel_cost - maintenance_cost), 2)::FLOAT    AS margin_proxy_per_trip_usd
 FROM trip_margin
-"""
-
-KPIS = (
-    (9, "Distance Variance", "%", DISTANCE_VARIANCE_SQL),
-    (28, "Margin Proxy per Trip", "USD", MARGIN_PROXY_SQL),
-)
-
-
-def calculate_all() -> list[dict]:
-    """One dict per KPI: kpi_id, name, unit, then the query's columns (value + join checks)."""
-    return [
-        {"kpi_id": kpi_id, "name": name, "unit": unit, **snowflake_client.fetch_all(sql)[0]}
-        for kpi_id, name, unit, sql in KPIS
-    ]

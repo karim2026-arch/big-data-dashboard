@@ -1,8 +1,8 @@
-"""The only module that talks to Snowflake. Endpoints call fetch_all() and never touch the connection."""
+"""The only module that talks to Snowflake. Repositories call fetch_all() and never touch the connection."""
 import snowflake.connector
 from snowflake.connector import DictCursor, SnowflakeConnection
 
-from .config import settings
+from ..core.config import settings
 
 _connection: SnowflakeConnection | None = None
 

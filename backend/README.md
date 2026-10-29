@@ -36,16 +36,20 @@ Open http://localhost:8000/docs to try the endpoints.
 Any Snowflake failure (login, SQL, timeout) returns HTTP 503 with the Snowflake message in `detail`.
 
 ## Flow
+Clean architecture: each layer only calls the layer below it, and services depend on contracts, not on Snowflake.
+Full explanation, every file, and how to add an endpoint: [ARCHITECTURE.md](ARCHITECTURE.md).
 ```
-browser  ──>  app/main.py (routes, CORS, error handler)
-                 ├──>  app/kpi_validation.py  calculate_all()  (KPI SQL)
-                 └──>  app/snowflake_client.py  fetch_all(sql)  ──>  Snowflake
-                            └── app/config.py  settings (backend/.env)
+browser ──> api/routes/*.py          HTTP only (URL, response schema)
+              └─> services/*.py      logic, depends on domain/repositories.py (contracts)
+                    └─> infrastructure/repositories/snowflake_*.py   implements the contracts
+                          ├─> infrastructure/sql_loader.py           reads queries/kpis/*.sql
+                          └─> infrastructure/snowflake_client.py     fetch_all(sql) ──> Snowflake
+                                └─> core/config.py                   settings (backend/.env)
 ```
-- `config.py`: reads `.env` once; fails at startup with the list of missing variables.
-- `snowflake_client.py`: one shared connection, opened on first query and reopened if Snowflake closed it. `fetch_all()` returns rows as dicts.
-- `kpi_validation.py`: one SQL query per KPI in `KPIS`; `calculate_all()` runs each and adds `kpi_id, name, unit`.
-- `main.py`: endpoints only call `fetch_all()` or `calculate_all()`. Column names come back upper case, as Snowflake returns them.
+- `core/config.py`: reads `.env` once; fails at startup with the list of missing variables.
+- `infrastructure/snowflake_client.py`: one shared connection, opened on first query and reopened if Snowflake closed it. `fetch_all()` returns rows as dicts.
+- `services/kpi_validation_service.py`: one query per KPI in `KPIS`; `calculate_all()` runs each and adds `kpi_id, name, unit`.
+- `schemas/`: the exact response fields shown in `/docs`. Column names stay upper case, as Snowflake returns them.
 
 ## KPI validation (`GET /api/kpis/validation`)
 Checks that the mart joins work by calculating two KPIs that need joins, over **all rows** (no date filter).

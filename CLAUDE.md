@@ -42,3 +42,6 @@ always any feature i said to you to add illustrate and explain deeply how its do
 any task make sure to explain to me in details how you have done it (not include the discussions or planning)
 
 for planning i always want the reasoning 
+
+
+if i tell you lets discuss it means think in it as senior and lets plan for it from all rounds of how to design it on large and low scale and what are the options and what is better for our case and why to take that not that it's to study and discuss to reach the most optimized option and plan 
