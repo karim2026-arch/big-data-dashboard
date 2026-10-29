@@ -25,16 +25,17 @@ const withDefaults = (series) =>
   series.map((item, index) => ({ ...item, label: item.label ?? columnLabel(item.key), color: item.color ?? COLORS[index % COLORS.length] }))
 
 // band = { min, max, label } draws an "allowed range" area (e.g. cold-chain limits).
-export function LineChartView({ data, xKey, lines, band, height = 260 }) {
+// xFormat = optional (x value) => text for the x axis and tooltip (e.g. hhmm for event_ts).
+export function LineChartView({ data, xKey, lines, band, xFormat, height = 260 }) {
   const chrome = CHROME[useTheme().theme]
   if (!data?.length) return <NoData />
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={MARGIN}>
         <CartesianGrid stroke={chrome.grid} vertical={false} />
-        <XAxis dataKey={xKey} {...AXIS} />
+        <XAxis dataKey={xKey} {...AXIS} tickFormatter={xFormat} />
         <YAxis {...AXIS} domain={['auto', 'auto']} width={56} />
-        <Tooltip {...tooltipProps(chrome)} />
+        <Tooltip {...tooltipProps(chrome)} labelFormatter={xFormat} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {band && (
           <ReferenceArea

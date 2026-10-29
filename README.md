@@ -142,7 +142,7 @@ The stream list is finalized from a bucket survey: [tools/s3_survey.py](tools/s3
 ├── tools/
 │   ├── s3_survey.py               # lists S3 folders and samples file headers
 │   └── validate_marts.py          # checks DBT_MARTS keys: orphans, duplicates, one current row (PASS/WARN/FAIL)
-├── dashboard/                     # React web dashboard (mock data now, API later)
+├── dashboard/                     # React web dashboard (reads the backend: Snowflake KPIs + Kafka live stream)
 ├── backend/                       # FastAPI in front of Snowflake (see backend/README.md)
 └── dbt/                           # (coming in Step 6)
 ```

@@ -12,15 +12,13 @@ export default function SafetyPage() {
           <Panel
             className="lg:col-span-2"
             title="Driver safety & idling scorecard"
-            subtitle="Handbook requirement. Drivers with the most incidents in the period. Speeding and idling events come from the live stream (thresholds are assumptions: 113 km/h, 30 min idling)."
+            subtitle="Handbook requirement. Drivers with the most incidents in the period."
           >
             <DataTable
               columns={[
                 { key: 'driver_id', label: 'driver_id' },
                 { key: 'driver', label: 'driver', format: (_, row) => `${row.first_name} ${row.last_name}` },
                 { key: 'distance_km', label: 'distance_km (km)' },
-                { key: 'kpi_33' },
-                { key: 'kpi_34' },
                 { key: 'kpi_24' },
                 { key: 'incidents', label: 'incidents (count)' },
               ]}

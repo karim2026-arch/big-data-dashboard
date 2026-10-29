@@ -1,7 +1,7 @@
--- Chart delay_by_hour (Delivery): KPI 3 Average Delivery Delay (min, late deliveries only) per scheduled hour (UTC),
--- current period. Same rule as kpis/average_delivery_delay.sql.
+-- Chart delay_by_hour (Delivery): KPI 3 Average Delivery Delay (min, late deliveries only) per scheduled hour
+-- (Cairo time; scheduled_datetime is UTC), current period. Same rule as kpis/average_delivery_delay.sql.
 SELECT
-    TO_CHAR(scheduled_datetime, 'HH24') || ':00'   AS hour,
+    TO_CHAR(CONVERT_TIMEZONE('UTC', 'Africa/Cairo', scheduled_datetime), 'HH24') || ':00'   AS hour,
     AVG(delay_minutes)                             AS kpi_3
 FROM fct_delivery_events
 WHERE event_type = 'DELIVERY'

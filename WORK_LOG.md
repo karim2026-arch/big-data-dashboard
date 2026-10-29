@@ -215,11 +215,13 @@ Not added yet: `telemetry_raw` (JSONL), weather (JSON array) and anomaly labels 
 
 ---
 
-## Web dashboard (frontend, mock data) ⏳
+## Web dashboard (frontend) ⏳
+> **Update 2026-10-29:** the mock data source (fake numbers + in-browser simulator) described in this entry was removed. The dashboard now reads only the backend. See "Mock data removed" below.
+
 **What I did (2026-10-26):** Built [dashboard/](dashboard/): React + Vite + Tailwind, Recharts for KPI charts, Three.js (react-three-fiber) for the 3D map. All 7 dashboards from the catalog plus a Live Fleet Map. Data is mocked behind one switchable data source, so the real backend plugs in later without touching the pages. Details: [dashboard/README.md](dashboard/README.md).
 
 **Logic:**
-- Pages → hooks (`useKpis`, `useStream`) → `dataSource` → `mock` (now) or `api` (later, chosen by `VITE_DATA_SOURCE`).
+- Pages → hooks (`useKpis`, `useStream`) → `dataSource` → `mock` or `api` (chosen by `VITE_DATA_SOURCE`). Since 2026-10-29: `api` only, no switch.
 - Warehouse KPIs come pre-calculated (`GET /kpis/{dashboard}`). The frontend does no KPI math.
 - Live data comes over SSE (`telemetry` and `reefer` batches, `alert` rows) with the catalog column names.
 - The mock simulator moves 5,000 trucks on 108 lanes and injects the 4 anomaly families.
@@ -323,7 +325,7 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 - ~~SSE stream (`VITE_STREAM_URL`) belongs to the streaming team.~~ done, see "Live stream from Kafka over SSE".
 
 ### Warehouse KPIs on the dashboard + 30-min refresh ✅ (2026-10-29)
-**What I did:** Added `GET /api/kpis/{dashboard_id}?kpi_ids=…`. It calculates every KPI card and chart that the warehouse can answer, for the last 30 days vs the previous 30 days, directly on `DBT_MARTS`. 23 KPIs + 17 charts. KPIs and charts that need the live stream or pipeline metadata return `null`. The dashboard calls it in api mode and re-fetches every 30 min. Units switched to metric everywhere (api and mock).
+**What I did:** Added `GET /api/kpis/{dashboard_id}?kpi_ids=…`. It calculates every KPI card and chart that the warehouse can answer, for the last 30 days vs the previous 30 days, directly on `DBT_MARTS`. 23 KPIs + 17 charts. KPIs and charts that need the live stream or pipeline metadata return `null`. The dashboard calls it and re-fetches every 30 min. Units switched to metric everywhere (api and mock; the mock was removed on 2026-10-29).
 
 **Decisions:**
 - Scope: KPI cards and charts together. No cache (the KPI logic moves to dbt later; now the goal is correct logic).
@@ -427,7 +429,7 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 - Logic with fake rows (7 checks, all pass ✅): duplicate / late / older-than-60-min rows dropped · flag alert starts and ends with the same `anomaly_id` · `EXCESSIVE_IDLING` not at 29 min, yes at 30 min with `start_ts` = first idle row · KPIs incl. compliance without null `cargo_temp_f` and per commodity · snapshot = one event per alert (latest version) · rows expire after 60 min and their alerts end · `StreamService`: snapshot first, then changes, viewer queue removed on disconnect.
 - Real Kafka on a test instance (port 8001) ✅: snapshot 4.1 MB (telemetry 3.29 MB = 5,000 rows × 658 B, reefer 0.76 MB), first byte 0.66 s; KPIs: 5,000 trucks (3,543 parked / 1,215 driving / 242 idling), 46 speeding, 55 low fuel, 0 overheating, 1,205 reefers, compliance 100.0%, data age 13.0 min; 234 active alerts (133 `EXCESSIVE_IDLING`, 55 `LOW_FUEL`, 46 `SPEEDING`).
 - Kafka down (first version had a bug: topic "not found") → the reader logged it and retried every 10 s, the API kept answering ✅. Bug fixed (topics passed to the consumer, aiokafka assigns all 6 partitions).
-- `npm run build` passes ✅. Not done: clicking through the live map in a browser in api and mock mode.
+- `npm run build` passes ✅. Not done: clicking through the live map in a browser.
 
 **Still open:**
 - **Server on port 8000 restarted** (2026-10-29) as a separate process with `--reload --timeout-graceful-shutdown 3` (logs `backend/uvicorn.log`, `backend/uvicorn.err.log`, PID in `backend/uvicorn.pid`). Before the flag, an open dashboard tab (SSE) blocked every reload forever. With it, a reload finishes in 18–55 s ✅.
@@ -438,6 +440,103 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 - 133 `EXCESSIVE_IDLING` of 242 idling trucks looks high: compare with `gen_anomaly_labels` (KPIs 51–53) later.
 - Ask the owner: `retention.ms` of the two topics (must be ≥ 60 min), and whether the 5-min batch can be faster.
 - `Notion_Data_Catalog.md` still says "Kafka is not used" and lists the old topic names.
+
+### Mock data removed ✅ (2026-10-29)
+**What I did:** Deleted the dashboard's mock data source (fake KPI numbers, fake chart series, in-browser 5,000-truck simulator) and the `VITE_DATA_SOURCE` switch. The dashboard now always reads the backend: warehouse KPIs over REST, live stream over SSE.
+
+**Decisions:**
+- Remove the switch, not keep it with one option: one source means no dead code path.
+- `data/index.js` stays as the only data import of the components, so no hook or page changed.
+- `ROUTE_DEVIATION` kept (color, label, status priority) for a future stream flag; only its comments changed (the backend never sends it today).
+- The dashboard is not deployed, so nothing public breaks.
+
+**Logic:** pages → hooks (`useKpis`, `useStream`) → `data/index.js` (`export { apiSource as dataSource }`) → `apiSource` → backend `GET /api/kpis/{id}` and `GET /api/stream`. KPIs/charts not in the warehouse show `-` / "No data" (same as before in api mode).
+
+**Files:**
+- Deleted: `dashboard/src/data/mock/` (6 files: `mockSource.js`, `dashboards.js`, `fleetSimulator.js`, `kpiValues.js`, `reference.js`, `rng.js`, 746 lines).
+- Changed: `dashboard/src/data/index.js`, `src/config.js` (no `dataSource`), `src/components/Layout.jsx` (commented-out data badge + unused `config` import removed), `src/data/contract.js`, `src/kpis/definitions.js`, `src/pages/ColdChainPage.jsx` (comments), `dashboard/.env.example`, docs (`dashboard/README.md` section 9 removed and sections renumbered, `RUN.md`, `README.md`, `backend/ARCHITECTURE.md`, this log, `worklog_dashboard.md`).
+- **`.env` changes:** `dashboard/.env.example`: `VITE_DATA_SOURCE` removed. `dashboard/.env.local` not touched: its `VITE_DATA_SOURCE=api` line is now unused (safe to delete).
+
+**Tests done:** `npm run build` passes ✅ · no `mock` / `VITE_DATA_SOURCE` reference left in `dashboard/src` ✅. Not done: clicking through the pages in a browser.
+
+**Still open:** without the backend running, every page shows the error box and the live map stays "Waiting for the stream…" (no offline mode any more).
+
+### Stream KPIs + moving trucks from Kafka ⏳ (step 1 of 3 ✅, 2026-10-29)
+Plan and decisions: [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). Step 1 = backend KPIs + charts ✅ · step 2 = pages show them ⬜ · step 3 = trucks replay by `event_ts` ⬜.
+
+**What I did (step 1):** Every KPI and chart that needs telemetry / reefer data is now calculated **from Kafka** (not the warehouse, which has no stream table, so they were `null`). The backend keeps every Kafka row (only the columns the KPIs read), calculates KPIs 10, 11, 12, 13, 14, 15, 16, 23, 29, 33, 34 and the charts `trip_temperature`, `excursions_by_trailer`, `excursion_rate_by_ambient`, `high_risk_trips`, `time_in_state` once per Kafka batch, and sends them in a new SSE event `stream_kpis` on `GET /api/stream`. New filter `?events=stream_kpis` so pages without the map get ~1 KB instead of ~4 MB.
+
+**Decisions:** window = last 60 min of `event_ts` (ending at the newest row) vs the 60 min before · no `trip_id` / `load_id` in Kafka → one trailer / truck in the window = one trip (assumption, KPIs 11, 15, 16) · KPI 29 = `DRIVING` time / all time · a row counts until the next row of its truck/trailer, max 15 min · only the needed columns kept (full rows = 223 MB for 120 min) · same shapes as `GET /api/kpis`, so the pages can use them as they are · KPIs 35, 51–53 stay `null` (not in Kafka).
+
+**Found while testing on real data (and fixed):** KPI 34 was 49 now vs 153 before (edge effects): (1) an idle run is now counted when it **reaches** 30 min (same moment as the alert), not when it starts; (2) a run that begins with the first kept row is skipped (its real start is unknown); (3) 30 extra minutes are kept before the previous window so its runs have a known start. After: 71 vs 64.
+
+**Logic:** `FleetState.apply()` → `StreamHistory.add()` (dedup `vehicle_id` + `event_ts`, `COLUMNS` only, drops rows older than `kept()` = 2 × 60 + 30 min before the newest) → `take_changes()` / `snapshot()` call `stream_kpis()` (calculates again only when rows were added, and is sent to every viewer even if a new viewer's snapshot calculated it first) → `stream_kpis.calculate()`: `_tracks` (rows per truck/trailer, sorted, minutes per row) → `_runs` (flag runs) → `_excursions` (≥ 2 `is_temp_breach` rows) → `_window_kpis()` for the window and the previous one + `_series()` → `StreamKpis` → SSE `stream_kpis`. `StreamService._read()` reads back `kept()` from Kafka on start.
+
+**Files:**
+- Backend new: `app/services/stream_history.py`, `app/services/stream_kpis.py`.
+- Backend changed: `app/services/fleet_state.py` (history, `stream_kpis()`, `EXCESSIVE_IDLING_AFTER` moved to `stream_kpis.py`), `app/services/stream_service.py` (read back `kept()`), `app/schemas/stream.py` (`StreamKpis`, `EventName`), `app/api/routes/stream.py` (`?events=`), `app/services/kpi_service.py` (docstring), `.env.example` (comment), `README.md`, `ARCHITECTURE.md`.
+- Dashboard changed: `src/data/contract.js` (docs only: `stream_kpis`, `StreamKpis`, `?events=`).
+- **`.env` changes:** none (`backend/.env.example` comment only). No database change.
+
+**Tests done:**
+- Fake rows, values worked out by hand: **36 checks, all pass ✅** (minutes per row + 15-min cap · excursions: 1 row = none, null temp inside a run · KPIs 10–16, 23, 29, 33, 34 + previous window · window edges · all 5 charts · empty data → null · run at the first kept row skipped · history dedup / too old / expiry / columns · `stream_kpis` in snapshot and changes, still sent after a snapshot, not sent for a duplicate). Script: scratchpad `test_stream_kpis.py` (not in the repo).
+- Real Kafka (2026-10-29 ~13:10 UTC, window to 13:00 UTC): 100,267 messages read, 99,827 rows kept = **42 MB**, `calculate()` **0.65–0.85 s**, event **0.9 KB**. Values (now vs previous): KPI 10 99.9 / 100.0 % · 11 100.0 / 99.9 % · 12 0 / 1 · 13 – / 85.0 min · 14 – / 6.2 °F · 15 0.1 / 0.1 % · 16 3.0 / 2.5 min per trailer · 23 1,209.7 / 1,232.8 L · 29 34.6 / 34.1 % · 33 0.08 / 0.08 per 100 km · 34 71 / 64.
+- Running backend (port 8000, after reload) ✅: `?events=stream_kpis` → only `stream_kpis` (989 bytes); no filter → all 5 events (3.9 MB snapshot); `?events=nope` → 422.
+
+**Still open:**
+- Steps 2 (pages) and 3 (replay) of the plan.
+- `calculate()` runs on the event loop (~0.8 s once per 5-min batch): sends to viewers wait that long. Fine now; move to a thread if the batch gets faster.
+- `time_in_state` has only `DRIVING` / `IDLING` / `PARKED` (no loading/unloading or maintenance in Kafka).
+
+### KPIs without a data source removed ✅ (2026-10-29)
+**What I did:** With the mock gone, every KPI card, chart and chart column that neither the warehouse (`DBT_MARTS`) nor Kafka can fill was removed from the dashboard, with its definition (also gone from the KPI Guide).
+
+| Removed | Page | Why no source |
+|---|---|---|
+| KPI 35 Route Deviation Rate | Safety | needs each trip's origin–destination line; Kafka has no `trip_id` / route |
+| KPIs 51 Detection Precision, 52 Detection Recall, 53 Time-to-Detect | Live | need `gen_anomaly_labels` (only in S3, not connected) |
+| KPIs 55 End-to-End Latency, 56 Data Completeness, 59 S3 vs Snowflake Gap, 61 Pipeline Success Rate, 62 dbt Test Pass Rate, 63 API Success Rate, 64 Warehouse Cost | Platform | no `ingest_ts` / stream in Snowflake, no "expected rows", no S3 access, Airflow not built, dbt results not stored, the APIs are the generator's, no `ACCOUNT_USAGE` access |
+| Charts `pipeline_runs`, `credits_trend`, `row_counts` | Platform | same reasons (Airflow, `ACCOUNT_USAGE`, S3) |
+| Column `kpi_11` (weekly) in `service_trend` | Executive | Kafka keeps ~13 h, not weeks |
+| Columns `kpi_33`, `kpi_34` (per driver) in `driver_scorecard` | Safety | Kafka has no `driver_id` |
+
+**Decisions:** KPIs 54, 57, 58, 60 have a source (Kafka / backend) → kept, to be built now · the live page has no KPI cards any more, so it does not call `GET /api/kpis/live` (stream only) and `live` was removed from the backend (`/api/kpis/live` → 404) · removed KPIs are also deleted from `definitions.js` (and so from the KPI Guide) · `QUESTIONS['Outcome 6']` and the KPI group "G. Anomaly Detection Quality" were only used by 51–53 → removed.
+
+**Files:**
+- Dashboard: `src/dashboards.js` (live `[]`, safety without 35, platform `[54, 57, 58, 60]`), `src/kpis/definitions.js` (11 KPIs, Outcome 6, group G removed → 39 KPIs), `src/hooks/useKpis.js` (no call when a page has no `kpiIds`), `src/pages/PlatformPage.jsx` (cards only), `src/pages/ExecutivePage.jsx` (`kpi_11` line), `src/pages/SafetyPage.jsx` (`kpi_33`/`kpi_34` columns), `src/data/contract.js`, `README.md`.
+- Backend: `app/services/kpi_service.py` (`live` removed, `platform` no series, `SERIES_NOT_IN_WAREHOUSE` without the pipeline series), `queries/series/driver_scorecard.sql` (`NULL AS kpi_33/kpi_34` removed), `queries/series/service_trend.sql` (comment), `README.md`, [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md).
+- **`.env` changes:** none. No database change.
+
+**Tests done:** `npm run build` passes ✅ · every page's `kpiIds` exists in `KPIS` ✅ · no reference left to the removed KPIs / series / columns in `dashboard/src` ✅ · backend: `/api/kpis/live` → 404 ✅, `/api/kpis/platform` → 200 with `series: {}` ✅, `driver_scorecard` columns = `driver_id, first_name, last_name, distance_km, kpi_24, incidents` ✅, `service_trend` = `week_start, kpi_1` ✅.
+
+**Still open:** build KPIs 54, 57, 58, 60 (design to agree first). `Notion_Data_Catalog.md` still lists all 64 catalog KPIs (it is the original catalog, not changed).
+
+### Platform KPIs 54, 57, 58, 60 (stream) + 65 (warehouse) ✅ backend (2026-10-29)
+**What I did:** Built the 4 platform KPIs that have a source, and a new KPI 65.
+| KPI | Source | Rule | Unit |
+|---|---|---|---|
+| 54 Ingestion Throughput | Kafka messages | messages received / 3,600 s, last 60 min of Kafka time vs the 60 before | events/s |
+| 57 Duplicate Rate | Kafka messages | rows with the same `vehicle_id` + `event_ts` as a kept row / received | % |
+| 58 Rejection Rate | Kafka messages | not JSON, or no valid `vehicle_id` / `event_ts` / received | % |
+| 60 Data Freshness | Kafka messages | now − Kafka time of the newest message (no previous) | min |
+| 65 Warehouse Data Freshness (new, not in the catalog) | Snowflake `RAW_DATA` | now − newest `_AIRBYTE_EXTRACTED_AT` over the 13 tables (no previous) | min |
+
+**Decisions:** the Kafka reader passes each message's partition + offset + Kafka time (`StreamMessage`), so (1) a message read again after a Kafka failure is skipped, never counted as a duplicate, and (2) a broken message (no `event_ts`) can still be placed in a window by its Kafka time · freshness on 2 cards: 60 = stream, 65 = warehouse (id and names chosen by the owner) · `stream_kpis` is also sent every minute, so KPI 60 grows between batches · one `pct()` helper shared by `stream_kpis.py` and `platform_stats.py`.
+
+**Logic:** `KafkaStreamSource` → `StreamMessage(kind, row | None, partition, offset, timestamp)` → `StreamService._read()` → `FleetState.apply(message)`: `PlatformStats.is_new()` (skip a re-read) → `StreamHistory.add()` returns `added` / `duplicate` / `old` → `PlatformStats.count(duplicate, rejected)` per minute of Kafka time → `stream_kpis(now)` = row KPIs (cached, recalculated per batch) + `PlatformStats.kpis(now)` → SSE `stream_kpis`. A rejected message raises after being counted; `StreamService` logs it. KPI 65: `KPI_QUERIES[65]` → `queries/kpis/warehouse_data_freshness.sql` → `GET /api/kpis/platform`.
+
+**Files:**
+- Backend new: `app/services/platform_stats.py`, `app/infrastructure/queries/kpis/warehouse_data_freshness.sql`.
+- Backend changed: `app/domain/stream_source.py` (`StreamMessage`), `app/infrastructure/kafka_stream_source.py` (yields `StreamMessage`, no own warning), `app/services/fleet_state.py` (`apply(message)`, `PlatformStats`, send rule, `STREAM_KPIS_EVERY`), `app/services/stream_history.py` (`add()` result), `app/services/stream_kpis.py` (`pct()` shared), `app/services/stream_service.py` (messages, one warning per rejected message), `app/services/kpi_service.py` (`65`), `README.md`, `ARCHITECTURE.md`.
+- Dashboard: `src/kpis/definitions.js` (meanings of 54, 57, 58, 60; new 65; group to 65 → 40 KPIs), `src/dashboards.js` (platform `[54, 57, 58, 60, 65]`), `src/data/contract.js`, `README.md`.
+- Package installed in `.venv`: `tzdata 2026.6` (already in `requirements.txt`, added by the Cairo-time change; without it `ZoneInfo("Africa/Cairo")` fails on Windows and the backend does not start).
+- **`.env` changes:** none. No database change.
+
+**Tests done:**
+- Fake messages, values by hand: **51 checks, all pass ✅** (the 36 before, plus: re-read skipped · lower offset with newer Kafka time = new · duplicate → only `stream_kpis` · not JSON / no `vehicle_id` raise and are counted · refresh after 1 min, not after 30 s · KPI 54 = 10 / 60 s, 57 = 1 of 10, 58 = 2 of 10 and 1 of 4, 60 = 2 min).
+- Running backend (2026-10-29 13:45 UTC): 54 = **11.17** events/s (prev 11.12) · 57 = **0.4 %** (prev 0.43) · 58 = **0.0 %** · 60 = **0.1 min** · 65 (REST) = **52.6 min** · `npm run build` ✅.
+
+**Still open:** the Platform page (and the other pages) do not read `stream_kpis` yet, so 54, 57, 58, 60 show `-` on screen until step 2 of [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). KPI 65 shows now.
 
 ## 📌 Open items (later)
 - **Team access:** teammates need Snowflake, Airbyte and dbt access. Plan: a personal Snowflake user each (`snowflake/02_team_users.sql`), Airbyte workspace invites, and their own `profiles.yml`. Still to decide: access level (project roles + `SYSADMIN`, or `ACCOUNTADMIN`), usernames and emails.

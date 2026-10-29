@@ -1,11 +1,16 @@
 """Live fleet picture built from the stream, as plain logic (no Kafka, no asyncio, so it can be tested with dicts):
-the latest telemetry and reefer row per vehicle_id, alerts made from the row flags, and the live KPIs.
+the latest telemetry and reefer row per vehicle_id, alerts made from the row flags, the live KPIs, and the stream KPIs
+(every row of the KPI window, the previous one and a margin in StreamHistory, see stream_kpis.py) and the platform
+KPIs (from the Kafka messages themselves in PlatformStats, see platform_stats.py).
 Every time rule uses event_ts (never "number of batches"), so it works for any upstream batch interval."""
 from collections import Counter, defaultdict, deque
 from datetime import datetime, timedelta
 
-from ..domain.stream_source import StreamKind
-from ..schemas.stream import AlertRow, AnomalyType, LiveKpis
+from ..domain.stream_source import StreamKind, StreamMessage
+from ..schemas.stream import AlertRow, AnomalyType, LiveKpis, StreamKpis
+from .platform_stats import PlatformStats
+from .stream_history import StreamHistory
+from .stream_kpis import EXCESSIVE_IDLING_AFTER, calculate, kept
 
 # Row flag -> anomaly_type: the alert is active while the flag is true in the truck's latest row
 FLAG_ALERTS: dict[StreamKind, dict[str, AnomalyType]] = {
@@ -17,8 +22,8 @@ ALERT_TYPES: dict[StreamKind, list[AnomalyType]] = {
     "telemetry": [*FLAG_ALERTS["telemetry"].values(), "EXCESSIVE_IDLING"],
     "reefer": [*FLAG_ALERTS["reefer"].values()],
 }
-EXCESSIVE_IDLING_AFTER = timedelta(minutes=30)  # is_idling for this long (catalog KPI 34, assumption)
 FEED_SIZE = 40  # alert changes kept for a new viewer's feed (same as FEED_SIZE in the dashboard)
+STREAM_KPIS_EVERY = timedelta(minutes=1)  # stream_kpis are sent at least this often, so KPI 60 (data freshness) grows
 
 Event = tuple[str, object]  # (SSE event name, data)
 
@@ -48,8 +53,32 @@ class FleetState:
         self._new_alerts: list[AlertRow] = []  # not sent yet
         self._changed = False  # True when the KPIs must be sent again
         self._last_received_at: datetime | None = None
+        self._stream_rows = StreamHistory(kept(history))  # the stream KPI window + the previous one + MARGIN
+        self._platform = PlatformStats(history)
+        self._row_kpis: dict | None = None  # last calculate() result, None until the first row
+        self._stream_rows_changed = False  # True when calculate() must run again
+        self._stream_kpis_changed = False  # True when a new message came since stream_kpis were last sent
+        self._stream_kpis_sent_at: datetime | None = None
 
-    def apply(self, kind: StreamKind, row: dict, now: datetime) -> None:
+    def apply(self, message: StreamMessage, now: datetime) -> None:
+        """Counts the message for the platform KPIs, adds its row to the stream KPI rows, then to the latest rows (see
+        _apply_latest). A message read again (same partition + offset, after a Kafka failure) is skipped. A rejected
+        message (not JSON, no valid vehicle_id / event_ts) is counted, then KeyError / TypeError / ValueError is raised."""
+        if not self._platform.is_new(message):
+            return
+        self._stream_kpis_changed = True
+        try:
+            if message.row is None:
+                raise ValueError("not JSON")
+            added = self._stream_rows.add(message.kind, message.row)
+            self._apply_latest(message.kind, message.row, now)
+        except (KeyError, TypeError, ValueError):
+            self._platform.count(message, rejected=True)
+            raise
+        self._platform.count(message, duplicate=added == "duplicate")
+        self._stream_rows_changed |= added == "added"
+
+    def _apply_latest(self, kind: StreamKind, row: dict, now: datetime) -> None:
         """Keeps `row` only if it is inside the history window and newer than the truck's stored row.
         This drops duplicates (same event_ts, ~0.4%) and late rows, and makes reading the history again safe."""
         vehicle_id, event_ts = row["vehicle_id"], _time(row["event_ts"])
@@ -66,22 +95,28 @@ class FleetState:
             self._update_idling(row)
 
     def take_changes(self, now: datetime) -> list[Event]:
-        """Events for every viewer since the last call (empty when nothing changed). Drops old rows first."""
+        """Events for every viewer since the last call (empty when nothing changed). Drops old rows first.
+        stream_kpis are sent after new messages, and at least every STREAM_KPIS_EVERY."""
         self._expire(now)
-        if not self._changed:
-            return []
-        events: list[Event] = [(kind, list(rows.values())) for kind, rows in self._new_rows.items() if rows]
-        events += [("alert", alert) for alert in self._new_alerts]
-        events.append(("kpis", self.kpis(now)))
-        self._new_rows = {"telemetry": {}, "reefer": {}}
-        self._new_alerts = []
-        self._changed = False
+        events: list[Event] = []
+        if self._changed:
+            events += [(kind, list(rows.values())) for kind, rows in self._new_rows.items() if rows]
+            events += [("alert", alert) for alert in self._new_alerts]
+            events.append(("kpis", self.kpis(now)))
+            self._new_rows = {"telemetry": {}, "reefer": {}}
+            self._new_alerts = []
+            self._changed = False
+        if self._stream_kpis_changed or (self._stream_kpis_sent_at and now - self._stream_kpis_sent_at >= STREAM_KPIS_EVERY):
+            if stream_kpis := self.stream_kpis(now):
+                events.append(("stream_kpis", stream_kpis))
+                self._stream_kpis_sent_at = now
+            self._stream_kpis_changed = False
         return events
 
     def snapshot(self, now: datetime) -> list[Event]:
         """Everything a new viewer needs, so the page is never empty: every kept row, the active alerts, the alerts
-        of the last FEED_SIZE changes (latest version of each, oldest first, so the newest ends on top of the feed)
-        and the KPIs."""
+        of the last FEED_SIZE changes (latest version of each, oldest first, so the newest ends on top of the feed),
+        the KPIs and the stream KPIs (when a row was kept)."""
         oldest = now - self._history
         feed: dict[str, AlertRow] = {}  # anomaly_id -> latest version, in order of its latest change
         for alert in self._feed:
@@ -94,7 +129,21 @@ class FleetState:
             ("reefer", list(self._rows["reefer"].values())),
             *[("alert", alert) for alert in alerts],
             ("kpis", self.kpis(now)),
+            *[("stream_kpis", kpis) for kpis in [self.stream_kpis(now)] if kpis],
         ]
+
+    def stream_kpis(self, now: datetime) -> StreamKpis | None:
+        """Row KPIs + charts (calculate() runs again only when rows were added, ~once per Kafka batch) and the platform
+        KPIs (cheap, always recalculated). None before the first message."""
+        if self._stream_rows_changed:
+            self._row_kpis = calculate(self._stream_rows.rows("telemetry"), self._stream_rows.rows("reefer"), self._history)
+            self._stream_rows_changed = False
+        platform = self._platform.kpis(now)
+        if not self._row_kpis and not platform:
+            return None
+        minutes = round(self._history.total_seconds() / 60)
+        row_kpis = self._row_kpis or {"period": f"last {minutes} min vs previous {minutes} min", "kpis": [], "series": {}}
+        return StreamKpis(period=row_kpis["period"], kpis=row_kpis["kpis"] + platform, series=row_kpis["series"])
 
     def kpis(self, now: datetime) -> LiveKpis:
         telemetry = list(self._rows["telemetry"].values())

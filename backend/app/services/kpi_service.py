@@ -1,7 +1,8 @@
 """Warehouse KPIs and chart series of one dashboard: last 30 days vs the previous 30 days.
 The window ends yesterday (DATA_LAG_DAYS = 1): today is still loading. A trip lands in FCT_TRIPS only when completed,
 so trips count on the day they finished (ARRIVAL_TS), which keeps every past day complete.
-KPIs and charts that are not in the warehouse (live stream, pipeline metadata) are returned as null.
+KPIs and charts that are not in the warehouse (live stream, platform) are returned as null. The stream ones are
+calculated from Kafka instead and sent in the stream_kpis event of GET /api/stream (services/stream_kpis.py).
 The SQL is in infrastructure/queries/kpis/<query>.sql and infrastructure/queries/series/<name>.sql."""
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -36,27 +37,25 @@ KPI_QUERIES = {
     43: "orders_per_truck",
     44: "maintenance_cost_per_km",
     46: "truck_availability",
+    65: "warehouse_data_freshness",
 }
 
 # dashboard id (dashboard/src/dashboards.js) -> its chart series. Each name is a file in queries/series/,
 # except the names in SERIES_NOT_IN_WAREHOUSE, which are returned as null.
 DASHBOARD_SERIES = {
-    "live": (),
     "executive": ("service_trend", "unit_economics_trend"),
     "delivery": ("lane_otd", "worst_customers", "delay_by_hour", "facility_queue"),
     "cold_chain": ("trip_temperature", "excursions_by_trailer", "excursion_rate_by_ambient", "high_risk_trips"),
     "fuel": ("fuel_spend_trend", "fuel_efficiency_by_route", "fuel_efficiency_by_truck", "price_by_state", "purchase_outliers"),
     "safety": ("driver_scorecard", "time_in_state", "incidents_by_type"),
     "maintenance": ("cost_trend", "maintenance_mix", "repeat_trucks", "cost_by_model_year"),
-    "platform": ("pipeline_runs", "row_counts", "credits_trend"),
+    "platform": (),
 }
 SERIES_NOT_IN_WAREHOUSE = {
     # reefer stream
     "trip_temperature", "excursions_by_trailer", "excursion_rate_by_ambient", "high_risk_trips",
     # telemetry stream
     "time_in_state",
-    # pipeline metadata (Airflow runs, S3 counts, ACCOUNT_USAGE): no table we can read
-    "pipeline_runs", "row_counts", "credits_trend",
 }
 
 

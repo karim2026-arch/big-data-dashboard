@@ -1,5 +1,4 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { config } from '../config'
 import { DASHBOARDS, KPI_GUIDE } from '../dashboards'
 
 const navLinkClass = ({ isActive }) =>
@@ -13,13 +12,6 @@ export default function Layout() {
       <aside className="w-full shrink-0 border-b border-slate-200 bg-white p-4 md:w-60 md:border-b-0 md:border-r dark:border-slate-800 dark:bg-slate-900/40">
         <div className="mb-5">
           <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">Fleet Data Platform</div>
-          {/* <span
-            className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-              config.dataSource === 'mock' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-            }`}
-          >
-            data: {config.dataSource}
-          </span> */}
         </div>
         <nav className="flex gap-1 overflow-x-auto md:flex-col">
           {DASHBOARDS.map((dashboard) => (

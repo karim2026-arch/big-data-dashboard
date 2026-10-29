@@ -1,6 +1,6 @@
 -- KPI 22 Fuel Price Variance (pct): average over purchases of (price_per_liter - reference) / reference x 100.
 -- reference = national diesel price of the purchase day, from RAW_DATA.DIESEL_PRICES (not in DBT_MARTS yet; text columns,
--- USD per gallon, converted to USD per liter with 1 gal = 3.78541 L). Includes the simulator's state offsets.
+-- USD per gallon, converted to USD per liter with 1 gal = 3.78541 L).
 -- Period date: PURCHASE_DATE.
 WITH diesel AS (
     SELECT

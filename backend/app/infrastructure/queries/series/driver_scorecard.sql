@@ -1,6 +1,5 @@
 -- Chart driver_scorecard (Safety): the 10 drivers with the most safety incidents in the current period (then most km).
 -- distance_km = SUM(trips' actual_distance_km), kpi_24 = Idle Time Share (pct), same rule as kpis/idle_time_share.sql.
--- kpi_33 (speeding) and kpi_34 (excessive idling events) come from telemetry (stream), so they are NULL here.
 -- DIM_DRIVER keeps history, so only the current row (is_current) is joined.
 WITH driver_trips AS (
     SELECT
@@ -23,8 +22,6 @@ SELECT
     d.first_name,
     d.last_name,
     t.distance_km,
-    NULL                                                       AS kpi_33,
-    NULL                                                       AS kpi_34,
     t.kpi_24,
     COALESCE(i.incidents, 0)                                   AS incidents
 FROM driver_trips t

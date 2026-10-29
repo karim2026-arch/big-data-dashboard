@@ -2,13 +2,14 @@ import { Line } from '@react-three/drei'
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { useTheme } from '../hooks/useTheme'
-import { project } from './projection'
+import { MAP_SCALE, project } from './projection'
 
 const SEGMENTS = 32
 const CITY_COLOR = { light: '#334155', dark: '#e2e8f0' }
 
 // One arc per lane (rows need origin_/destination_ latitude + longitude).
-// heightOf(lane) and colorOf(lane) decide what the arc encodes; onHover(lane | null) reports the pointed lane.
+// heightOf(lane) (in degrees, scaled like the map) and colorOf(lane) decide what the arc encodes;
+// onHover(lane | null) reports the pointed lane.
 export default function RouteArcs({ lanes, heightOf, colorOf, onHover }) {
   const { theme } = useTheme()
   const arcs = useMemo(
@@ -16,7 +17,7 @@ export default function RouteArcs({ lanes, heightOf, colorOf, onHover }) {
       lanes.map((lane) => {
         const start = new THREE.Vector3(...project(lane.origin_latitude, lane.origin_longitude))
         const end = new THREE.Vector3(...project(lane.destination_latitude, lane.destination_longitude))
-        const control = start.clone().lerp(end, 0.5).setY(heightOf(lane))
+        const control = start.clone().lerp(end, 0.5).setY(heightOf(lane) * MAP_SCALE)
         return { lane, color: colorOf(lane), points: new THREE.QuadraticBezierCurve3(start, control, end).getPoints(SEGMENTS) }
       }),
     [lanes, heightOf, colorOf],
@@ -44,7 +45,7 @@ export default function RouteArcs({ lanes, heightOf, colorOf, onHover }) {
       ))}
       {cities.map(([city, position]) => (
         <mesh key={city} position={position}>
-          <sphereGeometry args={[0.2, 12, 12]} />
+          <sphereGeometry args={[0.2 * MAP_SCALE, 12, 12]} />
           <meshStandardMaterial color={CITY_COLOR[theme]} />
         </mesh>
       ))}

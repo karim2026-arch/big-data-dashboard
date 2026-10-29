@@ -37,7 +37,7 @@ Open http://localhost:8000/docs to try the endpoints.
 | `GET /health` | `{status, login_user, role, warehouse, database, schema}` as Snowflake sees the session |
 | `GET /api/tables` | One row per table or view the user can see: `TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, ROW_COUNT` |
 | `GET /api/kpis/{dashboard_id}?kpi_ids=1&kpi_ids=2…` | One dashboard: KPI cards (`value`, `previous`) + chart `series`, last 30 days vs previous 30 days (see below) |
-| `GET /api/stream` | Server-Sent Events: `telemetry`, `reefer`, `alert`, `kpis`. Snapshot first, then changes (see "Live stream" below) |
+| `GET /api/stream` | Server-Sent Events: `telemetry`, `reefer`, `alert`, `kpis`, `stream_kpis`. Snapshot first, then changes. `?events=stream_kpis` sends only the listed events (see "Live stream" below) |
 
 Any Snowflake failure (login, SQL, timeout) returns HTTP 503 with the Snowflake message in `detail`. An unknown `dashboard_id` returns 404.
 
@@ -58,13 +58,15 @@ browser ──> api/routes/*.py          HTTP only (URL, response schema)
 - `schemas/`: the exact response fields shown in `/docs`.
 
 ## Live stream (`GET /api/stream`)
-Shapes: `TelemetryRow`, `ReeferRow`, `AlertRow`, `LiveKpis` in [../dashboard/src/data/contract.js](../dashboard/src/data/contract.js).
+Shapes: `TelemetryRow`, `ReeferRow`, `AlertRow`, `LiveKpis`, `StreamKpis` in [../dashboard/src/data/contract.js](../dashboard/src/data/contract.js).
 ```
 Kafka fleet.silver.telemetry.v1 + fleet.silver.reefer.v1
-  └─> infrastructure/kafka_stream_source.py   one aiokafka consumer, no group, reads back STREAM_HISTORY_MINUTES on start
+  └─> infrastructure/kafka_stream_source.py   one aiokafka consumer, no group, reads back 2 x STREAM_HISTORY_MINUTES + 30 min on start
         └─> services/stream_service.py         background reader + 1-second send loop + one queue per viewer
               └─> services/fleet_state.py      latest row per vehicle_id, alerts, live KPIs (plain logic, no Kafka)
-                    └─> api/routes/stream.py   SSE: snapshot first, then the changes of each tick
+                    ├─> services/stream_history.py  every row (KPI columns only) of 2 x STREAM_HISTORY_MINUTES + 30 min
+                    ├─> services/stream_kpis.py     stream KPIs + charts from those rows (plain functions)
+                    └─> api/routes/stream.py   SSE: snapshot first, then the changes of each tick (?events= filter)
 ```
 - **The data today:** the silver job publishes a batch every ~5 min (one row per truck; ~2,150 telemetry + ~1,180 reefer rows), and the newest reading is ~10 min old when it arrives. Nothing in the code depends on the 5 min: every rule uses `event_ts`.
 - **Duplicates and late rows:** a row is kept only if its `event_ts` is newer than the truck's stored row (duplicates are ~0.4%, same `event_ts`). This also makes reading the history again (restart, Kafka retry) safe.
@@ -72,12 +74,18 @@ Kafka fleet.silver.telemetry.v1 + fleet.silver.reefer.v1
 - **Alerts:** active while the flag is true in the truck's latest row: `is_speeding` → `SPEEDING`, `is_engine_overheating` → `ENGINE_OVERHEATING`, `is_low_fuel` → `LOW_FUEL`, `is_temp_breach` → `COLD_CHAIN_BREACH`, `is_reefer_unit_failure` → `REEFER_UNIT_FAILURE`. `EXCESSIVE_IDLING`: `is_idling` for ≥ 30 min by `event_ts` (catalog KPI 34). `anomaly_id` = `vehicle_id-anomaly_type-start_ts`.
 - **Sending:** every second, only if something changed (with a 5-min batch: one send per batch). A new viewer gets every row, active alerts, the last 40 alert changes and the KPIs first.
 - **Kafka down:** the reader logs the error and tries again every 10 s; the API keeps serving the data it has.
+- **Stream KPIs (`stream_kpis`):** KPIs 10, 11, 12, 13, 14, 15, 16, 23, 29, 33, 34 and the charts `trip_temperature`, `excursions_by_trailer`, `excursion_rate_by_ambient`, `high_risk_trips`, `time_in_state`, calculated from **every** Kafka row of the last 60 min of `event_ts` (ending at the newest row) vs the 60 min before. Same shapes as `GET /api/kpis/{dashboard_id}`, where they are `null`.
+  - Platform KPIs in the same event, from the Kafka messages themselves (`services/platform_stats.py`), last 60 min of **Kafka time** vs the 60 before (Kafka time because a broken message has no `event_ts`): **54** messages per second, **57** duplicates (same `vehicle_id` + `event_ts` as a kept row) %, **58** rejected (not JSON, or no valid `vehicle_id` / `event_ts`) %, **60** now − newest Kafka time (min). A message read again after a Kafka failure (same partition + offset, Kafka time not newer) is skipped, so it is never counted as a duplicate. `stream_kpis` is also sent every minute, so KPI 60 keeps growing between batches. Measured 2026-10-29 13:45 UTC: 54 = 11.17 events/s, 57 = 0.4 %, 58 = 0.0 %, 60 = 0.1 min.
+  - Rows kept: only the columns the KPIs read, for 2 × 60 min + a 30-min margin (~100k rows = ~42 MB, measured 2026-10-29; full rows would be ~223 MB for 120 min). Calculated once per Kafka batch (~0.8 s), event ~1 KB.
+  - Rules: a row counts until the next row of its truck/trailer, at most 15 min (`INTERVAL_CAP`). Excursion = ≥ 2 consecutive `is_temp_breach` rows of one trailer (null `cargo_temp_f` skipped). Excessive idling (KPI 34) counts when `is_idling` reaches 30 min, like the alert. A run that begins with the first kept row is skipped (its start is unknown); the 30-min margin keeps the previous window complete.
+  - Assumptions: no `trip_id` / `load_id` in Kafka, so one trailer (reefer) or truck (telemetry) in the window = one trip (KPIs 11, 15, 16); KPI 29 = `DRIVING` time / all time (no loading/unloading in Kafka); KPI 15 uses the silver flag `is_reefer_unit_failure`.
+  - KPI 17 has no card (only per band, in the chart). Removed from the dashboard (no data source): KPI 35 (no route in Kafka), 51–53 (labels only in S3), `kpi_33`/`kpi_34` per driver (no `driver_id`), weekly `kpi_11` (Kafka keeps ~13 h).
 
 ## Dashboard KPIs (`GET /api/kpis/{dashboard_id}`)
 Shape: `DashboardResponse` in [../dashboard/src/data/contract.js](../dashboard/src/data/contract.js). The dashboard sends the page's KPI ids (from `dashboard/src/dashboards.js`).
 - **Period:** 30 days ending **yesterday** (`DATA_LAG_DAYS = 1`) vs the 30 days before. Each row counts on the day it happened (`ACTUAL_DATE`, `PURCHASE_DATE`, `MAINTENANCE_DATE`, `INCIDENT_DATE`, snapshot date). Trips count on the day they **finished** (`ARRIVAL_TS::DATE`): a trip lands in `FCT_TRIPS` only when completed, so by start day (`TRIP_DATE`) the last days would be incomplete.
 - **Units:** metric, as the marts store them: km, L, L/100km, USD.
-- **Not in the warehouse → `null`:** stream KPIs (10–17, 23, 29, 33–35, 51–53; the live map uses `GET /api/stream` instead), platform KPIs (54–64), and their charts.
+- **Not in the warehouse → `null`:** stream KPIs 10–16, 23, 29, 33, 34 and their charts (they come in the `stream_kpis` event of `GET /api/stream` instead) and platform KPIs 54, 57, 58, 60 (also in `stream_kpis`). KPI 65 Warehouse Data Freshness (`warehouse_data_freshness.sql`: now − newest `_AIRBYTE_EXTRACTED_AT` over the 13 `RAW_DATA` tables, min, no previous) is a warehouse KPI. The live page has no KPI cards, so `live` is not a dashboard id here (404).
 - **No cache:** every call runs the SQL (one dashboard ≈ 2–4 s). The KPI logic is meant to move to dbt later.
 - **SQL:** one file per KPI in `queries/kpis/` (returns `PERIOD` = `value`/`previous` + `KPI_VALUE`), one per chart in `queries/series/`. Parameters: `%(previous_start)s`, `%(current_start)s`, `%(current_end)s`. Never write a `%` sign in these files (the connector reads `%` as a parameter): write "pct".
 - Table names are not schema-qualified, so `SNOWFLAKE_API_SCHEMA` must be `DBT_MARTS`. Only KPI 22 and its two charts read `RAW_DATA.DIESEL_PRICES` (not in the marts yet).

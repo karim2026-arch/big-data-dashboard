@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from ..domain.stream_source import StreamSource
 from .fleet_state import Event, FleetState
+from .stream_kpis import kept
 
 logger = logging.getLogger(__name__)
 
@@ -49,15 +50,16 @@ class StreamService:
             self._viewers.discard(queue)
 
     async def _read(self) -> None:
-        """Reads the source forever, starting STREAM_HISTORY_MINUTES back. After any failure it waits and reads the
-        same window again: rows already kept are not newer, so FleetState drops them."""
+        """Reads the source forever, starting kept(STREAM_HISTORY_MINUTES) back (the stream KPI window, the previous
+        one and a margin). After any failure it waits and reads the same again: FleetState drops the rows it has."""
         while True:
             try:
-                async for kind, row in self._source.messages(since=_now() - self._history):
+                async for message in self._source.messages(since=_now() - kept(self._history)):
                     try:
-                        self._state.apply(kind, row, _now())
-                    except (KeyError, TypeError, ValueError):  # no vehicle_id or a bad event_ts: skip the row
-                        logger.warning("Skipped a %s row without a valid vehicle_id / event_ts: %s", kind, row)
+                        self._state.apply(message, _now())
+                    except (KeyError, TypeError, ValueError):  # counted as rejected (KPI 58), row not kept
+                        logger.warning("Rejected a %s message (not JSON, or no valid vehicle_id / event_ts): partition %s "
+                                       "offset %s: %s", message.kind, message.partition, message.offset, message.row)
             except Exception:
                 logger.exception("Stream source failed, reading again in %s s", RETRY_SECONDS)
             await asyncio.sleep(RETRY_SECONDS)

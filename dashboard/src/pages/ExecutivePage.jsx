@@ -7,8 +7,8 @@ export default function ExecutivePage() {
     <DashboardShell dashboardId="executive">
       {(series) => (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Panel title="Service quality trend" subtitle="Weekly on-time delivery and cold-chain compliance (%)">
-            <LineChartView data={series.service_trend} xKey="week_start" lines={[{ key: 'kpi_1' }, { key: 'kpi_11' }]} />
+          <Panel title="Service quality trend" subtitle="Weekly on-time delivery (%)">
+            <LineChartView data={series.service_trend} xKey="week_start" lines={[{ key: 'kpi_1' }]} />
           </Panel>
           <Panel
             title="Unit economics trend"

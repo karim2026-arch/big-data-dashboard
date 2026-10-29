@@ -126,10 +126,6 @@ export const KPIS = {
     question: 'Q13', formula: 'Count of periods with engine_on = true and speed ≈ 0 for more than 30 min (outside loading/unloading)',
     action: 'Coaching and idle-reduction policy.',
   },
-  35: {
-    name: 'Route Deviation Rate', unit: '%', better: 'down', meaning: 'Trips with at least one confirmed deviation (> 8 km = 5 mi, assumption).',
-    question: 'Q4', formula: 'Trips with a GPS point > 8 km from the origin-destination line / eligible trips × 100',
-  },
   36: {
     name: 'Incident Rate', unit: 'per 1M km', better: 'down', meaning: 'Safety incidents per million km. Expected ~0.9 (= 1.4 per 1M mi).',
     question: 'Q14', formula: 'Count of safety_incidents / Σ trips.actual_distance_km × 1,000,000',
@@ -161,68 +157,30 @@ export const KPIS = {
     question: 'Q15', formula: 'Truck-days with is_in_maintenance = false / all truck-days × 100 (fct_truck_daily)',
   },
 
-  // G. Anomaly detection quality (against gen_anomaly_labels)
-  51: {
-    name: 'Detection Precision', unit: '%', better: 'up', meaning: 'Correct detections / all flagged by our rules.',
-    question: 'Outcome 6', formula: 'Correctly detected anomalies / all anomalies flagged by our rules × 100',
-  },
-  52: {
-    name: 'Detection Recall', unit: '%', better: 'up', meaning: 'Correct detections / all injected anomalies.',
-    question: 'Outcome 6', formula: 'Correctly detected anomalies / all injected anomalies in gen_anomaly_labels × 100',
-  },
-  53: {
-    name: 'Time-to-Detect', unit: 'min', better: 'down', meaning: 'Our detection time - label start_ts.',
-    question: 'Outcome 6', formula: 'Our detection timestamp − label start_ts',
-  },
-
   // Platform
   54: {
-    name: 'Ingestion Throughput', unit: 'events/s', better: 'up', meaning: 'Stream events ingested per second.',
+    name: 'Ingestion Throughput', unit: 'events/s', better: 'up', meaning: 'Kafka messages (telemetry + reefer) received per second, last 60 min of Kafka time.',
     question: 'Outcome 7', formula: 'Stream events ingested / seconds in the window',
   },
-  55: {
-    name: 'End-to-End Latency', unit: 's', better: 'down', meaning: 'ingest_ts to available in Snowflake.',
-    question: 'Outcome 7', formula: 'Time the row is available in Snowflake − ingest_ts',
-  },
-  56: {
-    name: 'Data Completeness', unit: '%', better: 'up', meaning: 'Expected rows that arrived.',
-    question: 'Outcome 7', formula: 'Rows that arrived / expected rows × 100',
-  },
   57: {
-    name: 'Duplicate Rate', unit: '%', better: 'down', meaning: 'Duplicate rows removed in staging (~0.3-0.4% injected).',
+    name: 'Duplicate Rate', unit: '%', better: 'down', meaning: 'Kafka rows with the same vehicle_id + event_ts as a row already kept (dropped).',
     question: 'Outcome 7', formula: 'Duplicate rows / all received rows × 100',
   },
   58: {
-    name: 'Rejection Rate', unit: '%', better: 'down', meaning: 'Rows sent to quarantine (malformed).',
+    name: 'Rejection Rate', unit: '%', better: 'down', meaning: 'Kafka messages that are not JSON or have no valid vehicle_id / event_ts (skipped).',
     question: 'Outcome 7', formula: 'Quarantined rows / all received rows × 100',
   },
-  59: {
-    name: 'S3 vs Snowflake Gap', unit: 'rows', better: 'down', meaning: 'Row-count difference between S3 and RAW.',
-    question: 'Outcome 7', formula: '|Rows in S3 files − rows in Snowflake RAW|', action: 'Prove that Airbyte moved everything (check per table and per day).',
-  },
   60: {
-    name: 'Data Freshness', unit: 'min', better: 'down', meaning: 'Minutes since the last successful load.',
-    question: 'Outcome 7', formula: 'Now − time of the last successful load',
+    name: 'Data Freshness', unit: 'min', better: 'down', meaning: 'Minutes since the newest Kafka message (live stream).',
+    question: 'Outcome 7', formula: 'Now − Kafka time of the newest message received',
   },
-  61: {
-    name: 'Pipeline Success Rate', unit: '%', better: 'up', meaning: 'Successful orchestrated runs / all runs.',
-    question: 'Outcome 7', formula: 'Successful runs / all scheduled runs × 100 (Airflow, Airbyte, dbt)',
-  },
-  62: {
-    name: 'dbt Test Pass Rate', unit: '%', better: 'up', meaning: 'Passed dbt tests / all tests.',
-    question: 'Outcome 7', formula: 'Passing dbt tests / all dbt tests × 100',
-  },
-  63: {
-    name: 'API Success Rate', unit: '%', better: 'up', meaning: 'Successful external API calls (EIA, Open-Meteo).',
-    question: 'Outcome 7', formula: 'Successful requests / all requests × 100 (Open-Meteo, EIA)',
-  },
-  64: {
-    name: 'Warehouse Cost', unit: 'credits', better: 'down', meaning: 'Snowflake credits used this month.',
-    question: 'Outcome 7', formula: 'Sum of Snowflake credits used in the month', action: 'Track against a Resource Monitor limit.',
+  65: {
+    name: 'Warehouse Data Freshness', unit: 'min', better: 'down', meaning: 'Minutes since the last Airbyte load into Snowflake (RAW_DATA).',
+    question: 'Outcome 7', formula: 'Now − newest _AIRBYTE_EXTRACTED_AT over the 13 RAW_DATA tables',
   },
 }
 
-// Why we track each KPI: the catalog's business questions (section 2) and, for detection and platform KPIs, its primary outcomes (section 1).
+// Why we track each KPI: the catalog's business questions (section 2) and, for platform KPIs, its primary outcome (section 1).
 export const QUESTIONS = {
   Q1: 'Are we picking up and delivering on time?',
   Q2: 'Why are deliveries late?',
@@ -237,7 +195,6 @@ export const QUESTIONS = {
   Q13: 'Which driving behaviors create risk?',
   Q14: 'How frequent and costly are safety incidents?',
   Q15: 'Are trucks going out of service too often?',
-  'Outcome 6': 'Detect route deviations, excessive idling, speeding, and refrigeration failures.',
   'Outcome 7': 'Provide reliable, timely, and traceable data for decisions.',
 }
 
@@ -248,13 +205,12 @@ export const KPI_GROUPS = [
   { title: 'C. Fuel & Cost', from: 19, to: 28, decisions: 'Route and driving-behavior optimization, fuel-stop policy, truck allocation, pricing review.' },
   { title: 'D. Fleet Utilization & Driver Safety', from: 29, to: 40, decisions: 'Driver coaching, truck assignment, safety program priorities.' },
   { title: 'E. Maintenance & Reliability', from: 41, to: 47, decisions: 'Preventive maintenance planning and availability management.' },
-  { title: 'G. Anomaly Detection Quality', from: 51, to: 53, decisions: 'Tune the detection rules per anomaly type (labels are used only for evaluation, never inside the rules).' },
-  { title: 'Data Platform & Pipeline', from: 54, to: 64, decisions: 'Check the data behind the business KPIs is trustworthy and timely before acting on it.' },
+  { title: 'Data Platform & Pipeline', from: 54, to: 65, decisions: 'Check the data behind the business KPIs is trustworthy and timely before acting on it.' },
 ]
 
-// Alert types with map colors. The first four are the generator's anomaly families (gen_anomaly_labels.anomaly_type);
+// Alert types with map colors. The first four are the anomaly_type values of gen_anomaly_labels;
 // SPEEDING, ENGINE_OVERHEATING and LOW_FUEL are live alerts made by the backend from the stream flags.
-// ROUTE_DEVIATION has no flag in the stream: only the mock simulator sends it.
+// ROUTE_DEVIATION has no flag in the stream yet: the backend never sends it (kept for a future flag).
 export const ANOMALY_TYPES = {
   EXCESSIVE_IDLING: { label: 'Excessive idling', color: '#f59e0b' },
   ROUTE_DEVIATION: { label: 'Route deviation', color: '#a855f7' },

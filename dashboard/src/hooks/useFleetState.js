@@ -18,6 +18,10 @@ export const STATUS_STYLE = {
   PARKED: { label: 'Parked', color: '#475569' },
 }
 
+// Real position = lat and lon both sent and inside the GPS range (catalog: null GPS = missing, validate ranges).
+// A truck without one is not drawn on the map and is counted as "Position unknown".
+export const hasPosition = ({ lat, lon }) => lat != null && lon != null && Math.abs(lat) <= 90 && Math.abs(lon) <= 180
+
 export function statusOf(telemetry, anomalyTypes) {
   const anomaly = anomalyTypes && ANOMALY_PRIORITY.find((type) => anomalyTypes.has(type))
   return anomaly ?? telemetry.motion_status
@@ -33,13 +37,16 @@ export function useFleetState() {
   const [tick, setTick] = useState(0)
   const [alertFeed, setAlertFeed] = useState([])
   const [liveKpis, setLiveKpis] = useState(null) // LiveKpis, calculated by the backend
+  // The snapshot ends with its kpis event. Alerts that arrive after it are new (the page lights them up); marked when the
+  // message arrives, because React may draw the whole snapshot at once, after that kpis event.
+  const snapshotDone = useRef(false)
+  const newAlertIds = useRef(new Set()) // anomaly_id of the last FEED_SIZE alert changes after the snapshot
 
   useStream('telemetry', (rows) => {
     for (const row of rows) {
       const vehicle = vehicles.current.get(row.vehicle_id) ?? { telemetry: null, reefer: null }
-      // Null GPS = signal lost: keep the last known position instead of jumping to 0,0.
-      const telemetry = row.lat == null && vehicle.telemetry ? { ...row, lat: vehicle.telemetry.lat, lon: vehicle.telemetry.lon } : row
-      vehicles.current.set(row.vehicle_id, { ...vehicle, telemetry })
+      // Rows are kept as sent: null lat/lon = position unknown, so the truck is not drawn (no guessed position).
+      vehicles.current.set(row.vehicle_id, { ...vehicle, telemetry: row })
     }
     dirty.current = true
     setTick((value) => value + 1)
@@ -53,6 +60,10 @@ export function useFleetState() {
   })
 
   useStream('alert', (alert) => {
+    if (snapshotDone.current) {
+      newAlertIds.current.add(alert.anomaly_id)
+      if (newAlertIds.current.size > FEED_SIZE) newAlertIds.current.delete(newAlertIds.current.values().next().value)
+    }
     if (alert.end_ts) activeAlerts.current.delete(alert.anomaly_id)
     else activeAlerts.current.set(alert.anomaly_id, alert)
     dirty.current = true
@@ -60,7 +71,10 @@ export function useFleetState() {
     setAlertFeed((feed) => [alert, ...feed.filter((row) => row.anomaly_id !== alert.anomaly_id)].slice(0, FEED_SIZE))
   })
 
-  useStream('kpis', setLiveKpis)
+  useStream('kpis', (kpis) => {
+    snapshotDone.current = true
+    setLiveKpis(kpis)
+  })
 
   // vehicle_id -> Set of active anomaly types
   function activeTypesByVehicle() {
@@ -72,5 +86,5 @@ export function useFleetState() {
     return result
   }
 
-  return { vehicles, dirty, tick, alertFeed, liveKpis, activeTypesByVehicle }
+  return { vehicles, dirty, tick, alertFeed, liveKpis, newAlertIds, activeTypesByVehicle }
 }

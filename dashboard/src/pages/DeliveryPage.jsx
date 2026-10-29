@@ -74,7 +74,7 @@ export default function DeliveryPage() {
               rows={series.worst_customers}
             />
           </Panel>
-          <Panel title="Average delay by hour of day" subtitle="Scheduled delivery hour (UTC), minutes">
+          <Panel title="Average delay by hour of day" subtitle="Scheduled delivery hour, minutes">
             <BarChartView data={series.delay_by_hour} xKey="hour" bars={[{ key: 'kpi_3' }]} />
           </Panel>
           <Panel className="lg:col-span-2" title="Facilities with the longest destination queue" subtitle="Minutes waiting before unloading starts">

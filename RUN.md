@@ -60,14 +60,8 @@ npm install
 Copy-Item .env.example .env.local
 cd ..
 ```
-In `dashboard/.env.local`, choose where the data comes from:
-
-| `VITE_DATA_SOURCE` | Meaning | Backend needed? |
-|---|---|---|
-| `api` | Real data: Snowflake KPIs + Kafka live map | yes |
-| `mock` | Fake data made in the browser (good for UI work) | no |
-
-Keep `VITE_API_BASE_URL=http://localhost:8000/api` and `VITE_STREAM_URL=http://localhost:8000/api/stream`.
+The dashboard always reads the backend (Snowflake KPIs + Kafka live map), so the backend must be running.
+In `dashboard/.env.local`, keep `VITE_API_BASE_URL=http://localhost:8000/api` and `VITE_STREAM_URL=http://localhost:8000/api/stream`.
 
 ---
 
@@ -133,5 +127,5 @@ Press **Ctrl+C** in each terminal: the dashboard first, then the backend.
 
 ## More details
 - Backend: endpoints, KPI formulas, live stream logic: [backend/README.md](backend/README.md), code structure: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)
-- Dashboard: pages, data flow, mock vs api: [dashboard/README.md](dashboard/README.md)
+- Dashboard: pages, data flow: [dashboard/README.md](dashboard/README.md)
 - Event and field shapes between backend and dashboard: [dashboard/src/data/contract.js](dashboard/src/data/contract.js)

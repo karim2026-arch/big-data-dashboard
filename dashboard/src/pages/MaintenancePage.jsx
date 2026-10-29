@@ -39,7 +39,7 @@ export default function MaintenancePage() {
           </Panel>
           <Panel
             title="Maintenance cost per km by model year"
-            subtitle="Flat on purpose: the simulator assigns maintenance randomly, so there is no real age effect."
+            subtitle="USD per km, per truck model_year"
           >
             <LineChartView data={series.cost_by_model_year} xKey="model_year" lines={[{ key: 'kpi_44' }]} />
           </Panel>

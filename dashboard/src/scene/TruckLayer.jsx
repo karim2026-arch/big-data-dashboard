@@ -2,18 +2,18 @@ import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
-import { STATUS_STYLE, statusOf } from '../hooks/useFleetState'
+import { STATUS_STYLE, hasPosition, statusOf } from '../hooks/useFleetState'
 import { ANOMALY_TYPES } from '../kpis/definitions'
-import { project } from './projection'
+import { MAP_SCALE, project } from './projection'
 
-const CAPACITY = 10_000 // max trucks drawn (the simulated fleet is 5,000)
+const CAPACITY = 10_000 // max trucks drawn
 const HEIGHT = 0.1
 const SCALE = { normal: 1, anomaly: 2.6, selected: 4.5 }
 const MODEL_URL = '/models/truck_toyota_corsa_b.glb'
 const MODEL_BODY_NODE = 'TOY_CORSB_01_-_Default_0' // textured body; the 10-triangle black part is dropped
-const TRUCK_LENGTH = 0.25 // scene units (~17 mi), so the shape reads when zoomed in
+const TRUCK_LENGTH = 0.25 // scene units (~6 mi with MAP_SCALE 3), so the shape reads when zoomed in
 const MODEL_YAW = Math.PI // model front is +Z; heading_deg 0 = north = -Z
-const SNAP_DISTANCE = 1 // scene units (~69 mi): a bigger move is a new trip, so jump instead of gliding across the map
+const SNAP_DISTANCE = MAP_SCALE // scene units (1 degree, ~69 mi): a bigger move is a new trip, so jump instead of gliding across the map
 const MAX_INTERVAL_MS = 5000 // cap on the measured batch gap, so a paused tab doesn't make the next glide crawl
 
 // Model body with its node transforms baked in, centered and resized to TRUCK_LENGTH.
@@ -73,7 +73,11 @@ export default function TruckLayer({ fleet, selectedId, onSelect }) {
     const ids = []
     const list = []
     for (const [vehicleId, { telemetry }] of fleet.vehicles.current) {
-      if (!telemetry || telemetry.lat == null || ids.length === CAPACITY) continue
+      if (!telemetry || ids.length === CAPACITY) continue
+      if (!hasPosition(telemetry)) {
+        segments.current.delete(vehicleId) // when its position comes back, it appears there instead of gliding from the old spot
+        continue
+      }
       let segment = segments.current.get(vehicleId)
       if (segment?.telemetry !== telemetry) {
         const [x, , z] = project(telemetry.lat, telemetry.lon)
