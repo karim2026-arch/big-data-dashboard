@@ -1,5 +1,5 @@
 // In-browser stand-in for Kafka -> Spark -> backend SSE.
-// Emits the same three events as the real stream (see contract.js) with the catalog column names.
+// Emits the same four events as the real stream (see contract.js) with the catalog + silver column names.
 // 1 tick = 1 simulated minute (the generator's telemetry interval), played every TICK_MS of wall time.
 import { COMMODITIES, ROUTES, padId } from './reference'
 import { createRng } from './rng'
@@ -15,6 +15,10 @@ const IDLE_GPH = 0.8
 const MILES_PER_DEGREE = 69
 const GPS_DROP_CHANCE = 0.001 // null lat/lon (dirty data, catalog A.6)
 const SENSOR_DROP_CHANCE = 0.002 // null cargo_temp_f
+// Thresholds of the silver flags (mock assumptions; the real flags come calculated in the stream)
+const SPEEDING_MPH = 70 // catalog KPI 33
+const LOW_FUEL_SHARE = 0.25
+const OVERHEATING_F = 230
 
 // Chance per truck per tick that an anomaly starts, and its duration in minutes (catalog A.5).
 // COLD_CHAIN_BREACH is not started directly: it follows when a reefer failure pushes cargo out of range.
@@ -25,8 +29,9 @@ const ANOMALIES = {
 }
 
 const rng = createRng(42)
-const listeners = { telemetry: new Set(), reefer: new Set(), alert: new Set() }
+const listeners = { telemetry: new Set(), reefer: new Set(), alert: new Set(), kpis: new Set() }
 const activeAlerts = new Map() // anomaly_id -> AlertRow
+let lastKpis = null // LiveKpis of the last tick, replayed to a new subscriber
 
 const routesByOrigin = new Map()
 for (const route of ROUTES) {
@@ -198,6 +203,8 @@ function telemetryRow(truck, position) {
   truck.source_sequence += 1
   const gpsLost = rng.chance(GPS_DROP_CHANCE)
   const moving = truck.speed_mph > 0
+  const engine_temp_f = round(truck.engine_on ? rng.between(190, 210) : rng.between(70, 100), 1)
+  const motion_status = !truck.engine_on ? 'PARKED' : moving ? 'DRIVING' : 'IDLING'
   return {
     schema_version: 1,
     event_id: `T${truck.vehicle_id.slice(3)}${Math.floor(simTime / 1000)}`,
@@ -210,17 +217,23 @@ function telemetryRow(truck, position) {
     speed_mph: round(truck.speed_mph, 1),
     heading_deg: position.heading_deg,
     rpm: !truck.engine_on ? 0 : moving ? rng.int(1200, 1600) : rng.int(600, 750),
-    engine_temp_f: round(truck.engine_on ? rng.between(190, 210) : rng.between(70, 100), 1),
+    engine_temp_f,
     fuel_gph: round(truck.fuel_gph, 2),
     fuel_level_gal: round(truck.fuel_level_gal, 1),
     odometer_mi: round(truck.odometer_mi, 1),
     engine_on: truck.engine_on,
     ingest_ts: iso(simTime + rng.int(1, 5) * 1000),
+    is_speeding: truck.speed_mph > SPEEDING_MPH,
+    is_engine_overheating: engine_temp_f > OVERHEATING_F,
+    is_low_fuel: truck.fuel_level_gal < truck.tank * LOW_FUEL_SHARE,
+    is_idling: motion_status === 'IDLING',
+    motion_status,
   }
 }
 
 function reeferRow(truck, position) {
   const { reefer } = truck
+  const { range } = reefer
   reefer.source_sequence += 1
   return {
     schema_version: 1,
@@ -231,13 +244,48 @@ function reeferRow(truck, position) {
     event_ts: iso(simTime),
     source_sequence: reefer.source_sequence,
     cargo_temp_f: rng.chance(SENSOR_DROP_CHANCE) ? null : round(reefer.cargo_temp_f, 1),
-    setpoint_f: reefer.range.setpoint_f,
+    setpoint_f: range.setpoint_f,
     compressor_on: reefer.compressor_on,
     door_open: truck.parkedMinutes > 0 && rng.chance(0.2),
     ambient_temp_f: round(95 - (position.lat - 25) * 1.5 + rng.between(-3, 3), 1), // warmer in the south
     reefer_fuel_gph: reefer.compressor_on ? round(rng.between(0.4, 0.8), 2) : 0,
     unit_mode: 'CONTINUOUS',
     ingest_ts: iso(simTime + rng.int(1, 5) * 1000),
+    commodity_type: range.commodity,
+    allowed_temp_min_f: range.min_temp_f,
+    allowed_temp_max_f: range.max_temp_f,
+    is_temp_breach: Boolean(reefer.breach),
+    is_reefer_unit_failure: truck.anomaly?.type === 'REEFER_UNIT_FAILURE',
+  }
+}
+
+// Same shape as the backend's LiveKpis (contract.js), from this tick's rows (every truck sends one per tick).
+function liveKpis(telemetry, reefer) {
+  const count = (rows, flag) => rows.filter((row) => row[flag]).length
+  const compliancePct = (rows) => round((rows.filter((row) => !row.is_temp_breach).length / rows.length) * 100, 1)
+  const valid = reefer.filter((row) => row.cargo_temp_f != null)
+  const motion_status = {}
+  for (const row of telemetry) motion_status[row.motion_status] = (motion_status[row.motion_status] ?? 0) + 1
+  const byCommodity = {}
+  for (const { commodity } of COMMODITIES) {
+    const rows = valid.filter((row) => row.commodity_type === commodity)
+    if (rows.length) byCommodity[commodity] = compliancePct(rows)
+  }
+  const now = iso(simTime)
+  return {
+    as_of: now,
+    trucks_reporting: telemetry.length,
+    motion_status,
+    is_speeding: count(telemetry, 'is_speeding'),
+    is_engine_overheating: count(telemetry, 'is_engine_overheating'),
+    is_low_fuel: count(telemetry, 'is_low_fuel'),
+    reefers_reporting: reefer.length,
+    is_reefer_unit_failure: count(reefer, 'is_reefer_unit_failure'),
+    cold_chain_compliance_pct: valid.length ? compliancePct(valid) : null,
+    cold_chain_compliance_pct_by_commodity: byCommodity,
+    newest_event_ts: now,
+    data_age_min: 0,
+    last_received_at: now,
   }
 }
 
@@ -257,6 +305,8 @@ function tick(emitRows) {
   if (emitRows) {
     emit('telemetry', telemetry)
     emit('reefer', reefer)
+    lastKpis = liveKpis(telemetry, reefer)
+    emit('kpis', lastKpis)
   }
 }
 
@@ -273,6 +323,7 @@ export function subscribeSimulator(eventType, onEvent) {
   ensureFleet()
   listeners[eventType].add(onEvent)
   if (eventType === 'alert') activeAlerts.forEach((alert) => onEvent(alert)) // contract: replay active alerts on connect
+  if (eventType === 'kpis' && lastKpis) onEvent(lastKpis)
   if (!timer) timer = setInterval(() => tick(true), TICK_MS)
 
   return () => {

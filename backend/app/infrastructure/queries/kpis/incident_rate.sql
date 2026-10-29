@@ -1,5 +1,5 @@
 -- KPI 36 Incident Rate (per 1M km): COUNT(safety incidents) / SUM(trips' actual_distance_km) x 1,000,000.
--- Period date: INCIDENT_DATE for incidents, TRIP_DATE for trips.
+-- Period date: INCIDENT_DATE for incidents, ARRIVAL_TS date (day the trip finished) for trips.
 WITH incidents AS (
     SELECT
         IFF(incident_date >= %(current_start)s, 'value', 'previous')   AS period,
@@ -10,10 +10,10 @@ WITH incidents AS (
 ),
 trip_km AS (
     SELECT
-        IFF(trip_date >= %(current_start)s, 'value', 'previous')       AS period,
+        IFF(arrival_ts::DATE >= %(current_start)s, 'value', 'previous')       AS period,
         SUM(actual_distance_km)                                        AS distance_km
     FROM fct_trips
-    WHERE trip_date BETWEEN %(previous_start)s AND %(current_end)s
+    WHERE arrival_ts::DATE BETWEEN %(previous_start)s AND %(current_end)s
     GROUP BY period
 )
 SELECT

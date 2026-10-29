@@ -6,7 +6,7 @@ SELECT
     AVG(t.average_l_per_100km)   AS kpi_21
 FROM fct_trips t
 JOIN dim_truck tr ON tr.truck_key = t.truck_key
-WHERE t.trip_date BETWEEN %(current_start)s AND %(current_end)s
+WHERE t.arrival_ts::DATE BETWEEN %(current_start)s AND %(current_end)s
 GROUP BY ALL
 ORDER BY kpi_21 DESC
 LIMIT 10

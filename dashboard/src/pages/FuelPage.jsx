@@ -14,22 +14,22 @@ export default function FuelPage() {
           <Panel title="Weekly fuel spend" subtitle="Sum of fuel_purchases.total_cost per week (USD). Purchased, not burned.">
             <LineChartView data={series.fuel_spend_trend} xKey="week_start" lines={[{ key: 'total_cost', label: 'total_cost (USD)' }]} />
           </Panel>
-          <Panel title="Diesel price by state vs national reference" subtitle="USD per gallon. Compare within a state before flagging (state offsets exist).">
+          <Panel title="Diesel price by state vs national reference" subtitle="USD per liter. Compare within a state before flagging (state offsets exist).">
             <BarChartView
               data={series.price_by_state}
               xKey="location_state"
               bars={[
-                { key: 'price_per_gallon', label: 'price_per_gallon (USD/gal)' },
-                { key: 'reference_price_per_gallon', label: 'national reference (USD/gal)', color: '#64748b' },
+                { key: 'price_per_liter', label: 'price_per_liter (USD/L)' },
+                { key: 'reference_price_per_liter', label: 'national reference (USD/L)', color: '#64748b' },
               ]}
             />
           </Panel>
           <Panel
             title={`Least fuel-efficient routes (worst ${WORST_ROUTES})`}
-            subtitle="Fuel efficiency per route (handbook requirement). Expected fleet range 5.8-7.8 mpg."
+            subtitle="Fuel efficiency per route (handbook requirement). Expected fleet range 30-41 L/100km; higher = worse."
           >
             <BarChartView
-              data={series.mpg_by_route.slice(0, WORST_ROUTES).map((row) => ({ ...row, lane: lane(row) }))}
+              data={series.fuel_efficiency_by_route?.slice(0, WORST_ROUTES).map((row) => ({ ...row, lane: lane(row) }))}
               xKey="lane"
               bars={[{ key: 'kpi_21', color: '#fbbf24' }]}
               layout="vertical"
@@ -37,7 +37,7 @@ export default function FuelPage() {
             />
           </Panel>
           <Panel title="Least fuel-efficient trucks" subtitle="Compare with similar trucks before acting">
-            <DataTable columns={[{ key: 'truck_id', label: 'truck_id' }, { key: 'make', label: 'make' }, { key: 'kpi_21' }]} rows={series.mpg_by_truck} />
+            <DataTable columns={[{ key: 'truck_id', label: 'truck_id' }, { key: 'make', label: 'make' }, { key: 'kpi_21' }]} rows={series.fuel_efficiency_by_truck} />
           </Panel>
           <Panel className="lg:col-span-2" title="Fuel efficiency and cost per route (all lanes)">
             <div className="max-h-80 overflow-y-auto">
@@ -48,7 +48,7 @@ export default function FuelPage() {
                   { key: 'kpi_21' },
                   { key: 'kpi_20', format: usdCents },
                 ]}
-                rows={series.mpg_by_route}
+                rows={series.fuel_efficiency_by_route}
               />
             </div>
           </Panel>
@@ -58,8 +58,8 @@ export default function FuelPage() {
                 { key: 'fuel_purchase_id', label: 'fuel_purchase_id' },
                 { key: 'truck_id', label: 'truck_id' },
                 { key: 'location_state', label: 'location_state' },
-                { key: 'gallons', label: 'gallons (gal)' },
-                { key: 'price_per_gallon', label: 'price_per_gallon (USD/gal)', format: usdCents },
+                { key: 'liters', label: 'liters (L)' },
+                { key: 'price_per_liter', label: 'price_per_liter (USD/L)', format: usdCents },
                 { key: 'total_cost', label: 'total_cost (USD)', format: usd },
                 { key: 'kpi_22' },
               ]}

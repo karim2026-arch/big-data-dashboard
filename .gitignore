@@ -19,4 +19,5 @@ venv/
 # local outputs
 tools/s3_survey.txt
 backend/uvicorn.log
+backend/uvicorn.err.log
 backend/uvicorn.pid

@@ -10,12 +10,12 @@ WITH fuel_price AS (
 ),
 trip_totals AS (
     SELECT
-        DATE_TRUNC('week', trip_date)                                       AS week_start,
+        DATE_TRUNC('week', arrival_ts::DATE)                                       AS week_start,
         SUM(revenue_usd + fuel_surcharge_usd + accessorial_charges_usd)     AS revenue,
         SUM(fuel_liters_used)                                               AS liters_used,
         SUM(actual_distance_km)                                             AS distance_km
     FROM fct_trips
-    WHERE trip_date BETWEEN DATEADD('week', -11, DATE_TRUNC('week', %(current_end)s::DATE)) AND %(current_end)s
+    WHERE arrival_ts::DATE BETWEEN DATEADD('week', -11, DATE_TRUNC('week', %(current_end)s::DATE)) AND %(current_end)s
     GROUP BY week_start
 )
 SELECT

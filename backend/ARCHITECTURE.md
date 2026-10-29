@@ -28,33 +28,35 @@ So the code is split by **job**, and each job has one folder:
                                               sql_loader + snowflake_client ──> Snowflake
 ```
 
-## 2. One request, step by step: `GET /api/kpis/validation`
+## 2. One request, step by step: `GET /api/kpis/fuel?kpi_ids=19&kpi_ids=20`
 1. `main.py` has included `api/router.py`, which mounts `api/routes/kpis.py` under `/api`.
-2. FastAPI sees `Depends(get_kpi_validation_service)` in the route and calls `api/dependencies.py`.
-   It builds `KpiValidationService(SnowflakeKpiRepository())`.
-3. The route calls `service.calculate_all()`.
-4. The service loops over `KPIS` (`(9, "Distance Variance", "%", "distance_variance")`, …) and for each
-   calls `repository.fetch_kpi("distance_variance")`.
-5. `SnowflakeKpiRepository.fetch_kpi()` gets the SQL with `load_sql("kpis/distance_variance")`
-   (reads `infrastructure/queries/kpis/distance_variance.sql` once, then from memory) and runs it with `snowflake_client.fetch_all()`.
-6. The service adds `kpi_id, name, unit` to each row and returns a list of dicts.
-7. FastAPI checks the list against `response_model=list[KpiValidation]` and sends the JSON.
-8. If Snowflake fails at any step, `core/errors.py` turns it into HTTP 503 with the Snowflake message.
+2. FastAPI reads `dashboard_id = "fuel"` from the path and `kpi_ids = [19, 20]` from the query (`Query()` collects repeated `kpi_ids`).
+   It sees `Depends(get_kpi_service)` and calls `api/dependencies.py`, which builds `KpiService(SnowflakeKpiRepository())`.
+3. The route checks that `"fuel"` is a key of `DASHBOARD_SERIES` (else 404), then calls `service.dashboard("fuel", [19, 20])`.
+4. The service builds the period: `current_end` = today (UTC) − 1 day, `current_start` = `current_end` − 29 days, `previous_start` = `current_start` − 30 days.
+5. For each KPI id it looks up `KPI_QUERIES` (`19 → "total_fuel_spend"`) and calls `repository.fetch_rows("kpis/total_fuel_spend", params)`.
+   A KPI id not in `KPI_QUERIES` (stream KPI) is not queried: `value` and `previous` stay `None`.
+6. `SnowflakeKpiRepository.fetch_rows()` gets the SQL with `load_sql(...)` (reads the file once, then from memory), runs it with
+   `snowflake_client.fetch_all(sql, params)`, and returns the rows with lower-case keys and `Decimal` turned into `float`.
+7. The KPI query returns two rows (`period = 'value'` and `'previous'`); the service turns them into `{kpi_id, value, previous}`.
+8. For each name in `DASHBOARD_SERIES["fuel"]` it runs `series/<name>.sql` the same way, or returns `None` for a name in `SERIES_NOT_IN_WAREHOUSE`.
+9. FastAPI checks the dict against `response_model=DashboardResponse` and sends the JSON.
+10. If Snowflake fails at any step, `core/errors.py` turns it into HTTP 503 with the Snowflake message.
 
 ## 3. Every file
 ```
 backend/app/
   main.py
   core/        config.py, errors.py
-  domain/      repositories.py
+  domain/      repositories.py, stream_source.py
   infrastructure/
-               snowflake_client.py, sql_loader.py
-               queries/kpis/distance_variance.sql, margin_proxy.sql
+               snowflake_client.py, sql_loader.py, kafka_stream_source.py
+               queries/kpis/*.sql (one per KPI), queries/series/*.sql (one per chart)
                repositories/snowflake_system_repository.py, snowflake_kpi_repository.py
-  services/    system_service.py, kpi_validation_service.py
-  schemas/     system.py, kpi_validation.py
+  services/    system_service.py, kpi_service.py, stream_service.py, fleet_state.py
+  schemas/     system.py, dashboard.py, stream.py
   api/         dependencies.py, router.py
-               routes/health.py, tables.py, kpis.py
+               routes/health.py, tables.py, kpis.py, stream.py
 ```
 Each folder has an empty `__init__.py` so Python treats it as a package (needed for `from ..core.config import settings`).
 
@@ -73,27 +75,31 @@ Each folder has an empty `__init__.py` so Python treats it as a package (needed 
 ### `domain/repositories.py` (the contracts)
 ```python
 class KpiRepository(Protocol):
-    def fetch_kpi(self, query: str) -> dict: ...
+    def fetch_rows(self, query: str, params: dict) -> list[dict]: ...
 ```
 A `Protocol` lists the methods a class must have. It has no code (`...`).
-Any class with a matching `fetch_kpi` method counts as a `KpiRepository`, with no inheritance needed.
+Any class with a matching `fetch_rows` method counts as a `KpiRepository`, with no inheritance needed.
 The service is typed against this contract, so a test can pass a fake class instead of Snowflake.
 
-`fetch_kpi(query)` takes the query name instead of one method per KPI, so 60 KPIs don't need 60 methods.
+`fetch_rows(query, params)` takes the query name (`"kpis/..."` or `"series/..."`) instead of one method per KPI, so 60 KPIs and their charts do not need 60 methods.
 
 ### `infrastructure/`
-- **`snowflake_client.py`**: unchanged except the import path (`..core.config`). Still the only file that opens a connection.
+- **`snowflake_client.py`**: the only file that opens a connection. `fetch_all()` catches an expired login (`ReauthenticationRequest`,
+  or Snowflake codes 390111 / 390112 / 390114 = "log in again"), closes the dead connection, opens a new one and runs the query once more.
+  Any other error is raised as before (→ 503).
 - **`sql_loader.py`**: `load_sql("kpis/margin_proxy")` returns the text of `queries/kpis/margin_proxy.sql`.
   `@cache` stores the result, so each file is read from disk only once.
-  The name always comes from code (`KPIS`), never from a URL, so a user cannot make it read another file.
-- **`queries/kpis/*.sql`**: the same SQL as the old Python strings (checked character by character), with the comments as `--` lines.
-  You can paste them straight into a Snowflake worksheet.
-- **`repositories/snowflake_kpi_repository.py`**: `fetch_kpi(query)` = `fetch_all(load_sql(f"kpis/{query}"))[0]` (the first and only row).
+  The name always comes from code (`KPI_QUERIES`, `DASHBOARD_SERIES`), never from a URL, so a user cannot make it read another file.
+- **`queries/kpis/*.sql`**: one file per KPI. Each returns one row per period: `PERIOD` (`'value'` = current, `'previous'`) and `KPI_VALUE`.
+  **`queries/series/*.sql`**: one file per chart, returning the chart's rows. Both use the parameters `%(previous_start)s`, `%(current_start)s`,
+  `%(current_end)s`: replace them with dates to paste a file into a Snowflake worksheet. Never write a `%` sign in them (the connector reads `%` as a parameter).
+- **`repositories/snowflake_kpi_repository.py`**: `fetch_rows(query, params)` = `fetch_all(load_sql(query), params)`, with keys lower-cased
+  (the dashboard reads `kpi_1`, `week_start`, ...) and `Decimal` turned into `float` (JSON has no Decimal).
 - **`repositories/snowflake_system_repository.py`**: `current_session()` and `list_tables()`. Their short SQL stays here as strings (decision: only KPI SQL in `.sql` files).
 
 ### `services/`
-- **`kpi_validation_service.py`**: was `kpi_validation.py`. `KPIS` now holds the query name instead of the SQL text.
-  `calculate_all()` has the same logic as before, but calls `self._repository.fetch_kpi(query)`.
+- **`kpi_service.py`**: `PERIOD_DAYS = 30`, `DATA_LAG_DAYS = 3`, `KPI_QUERIES` (kpi_id → SQL file), `DASHBOARD_SERIES` (dashboard → chart files),
+  `SERIES_NOT_IN_WAREHOUSE` (charts returned as null), `Period` (the 3 dates), `period_ending()`, and `KpiService.dashboard()`.
   `__init__(self, repository: KpiRepository)` receives the repository from outside (dependency injection). The service never creates it.
 - **`system_service.py`**: `health()` is the old `/health` logic (`status: "ok"` + lower-cased keys). `tables()` passes the table list through.
 
@@ -101,41 +107,49 @@ The service is typed against this contract, so a test can pass a fake class inst
 The exact JSON fields. They appear in `/docs`, and FastAPI checks every response against them.
 - **`system.py`**: `HealthResponse`, `TableRow`. `schema` is already a name inside Pydantic's `BaseModel`, so the field is
   `schema_: str | None = Field(alias="schema")`. FastAPI writes the alias, so the JSON key is still `schema`.
-- **`kpi_validation.py`**: `KpiValidationBase` holds the shared `kpi_id, name, unit` (written once, not repeated).
-  `DistanceVarianceValidation` (`kpi_id: Literal[9]`) and `MarginProxyValidation` (`kpi_id: Literal[28]`) add each query's columns.
-  `KpiValidation = Annotated[A | B, Field(discriminator="kpi_id")]` tells Pydantic to choose the model by `kpi_id`.
-  Field names stay upper case because Snowflake returns them that way, so the JSON is identical to before.
+- **`dashboard.py`**: `KpiValue` (`kpi_id, value, previous`) and `DashboardResponse` (`dashboard, period, as_of, kpis, series`), as in `contract.js`.
+  `series` is `dict[str, list[dict] | None]` because every chart has its own columns.
 
 ### `api/`
-- **`dependencies.py`**: one function per service, e.g. `get_kpi_validation_service()` returns `KpiValidationService(SnowflakeKpiRepository())`.
+- **`dependencies.py`**: one function per service, e.g. `get_kpi_service()` returns `KpiService(SnowflakeKpiRepository())`.
   This is the only file that imports both services and Snowflake repositories.
 - **`routes/*.py`**: each file has `router = APIRouter(...)` and one function per URL. Example:
   ```python
-  @router.get("/validation", response_model=list[KpiValidation])
-  def kpis_validation(service: Annotated[KpiValidationService, Depends(get_kpi_validation_service)]) -> list[dict]:
-      return service.calculate_all()
+  @router.get("/tables", response_model=list[TableRow])
+  def tables(service: Annotated[SystemService, Depends(get_system_service)]) -> list[dict]:
+      return service.tables()
   ```
-  `Depends(...)` makes FastAPI call `get_kpi_validation_service()` and pass the result in as `service`.
+  `Depends(...)` makes FastAPI call `get_system_service()` and pass the result in as `service`.
   `tags=[...]` only groups the routes in `/docs`.
-- **`router.py`**: joins the route files. `/health` stays at the root; `tables` and `kpis` get `prefix="/api"`.
+- **`router.py`**: joins the route files. `/health` stays at the root; `tables`, `kpis` and `stream` get `prefix="/api"`.
 
-## 4. How to add a new endpoint (example: `GET /api/kpis/{dashboard}`)
-Each layer gets one small addition, and nothing existing changes except `router.py` and `dependencies.py`:
+### Live stream files (`GET /api/stream`)
+Same layers as the KPIs, but the data is pushed (Kafka → memory → SSE) instead of asked for (HTTP → Snowflake).
+- **`domain/stream_source.py`**: `StreamSource` contract, one method `messages(since)` that yields `(kind, row)` forever (`kind` = `"telemetry"` | `"reefer"`).
+- **`infrastructure/kafka_stream_source.py`**: `KafkaStreamSource`, an aiokafka consumer on both topics with **no consumer group** (each backend instance must
+  read every truck, and nothing is committed: the history is read again on every start). `_seek_to()` moves each partition to the first message produced
+  at or after `since` (`offsets_for_times`). Messages that are not JSON are skipped with a warning.
+- **`services/fleet_state.py`**: `FleetState`, plain logic (no Kafka, no asyncio). `apply()` keeps a row only if it is inside the history window and newer
+  than the stored row of that truck, and updates the alerts. `take_changes()` drops old rows and returns the events not sent yet (empty = send nothing).
+  `snapshot()` is what a new viewer gets. `kpis()` builds `LiveKpis`. Constants: `FLAG_ALERTS`, `EXCESSIVE_IDLING_AFTER` (30 min), `FEED_SIZE` (40).
+- **`services/stream_service.py`**: `StreamService` runs two background tasks: `_read()` (source → `FleetState`, retries every 10 s on any error) and
+  `_send_changes()` (every second, puts the changes in each viewer's queue). `events()` is one viewer: snapshot, then its queue, and it removes the queue
+  when the browser leaves.
+- **`schemas/stream.py`**: `AlertRow` and `LiveKpis` (the events the backend builds). Telemetry and reefer rows are sent as Kafka has them, so no model.
+- **`api/routes/stream.py`**: `response_class=EventSourceResponse` (FastAPI's built-in SSE); each `(event, data)` becomes a `ServerSentEvent`.
+- **`api/dependencies.py`**: `stream_service` is **one object for the whole app** (all viewers share one Kafka reader and one fleet state);
+  `main.py` starts it in `lifespan` and stops it on shutdown.
 
-| Step | File | Add |
-|---|---|---|
-| 1 | `infrastructure/queries/dashboards/<id>.sql` | The SQL for that dashboard |
-| 2 | `domain/repositories.py` | `class DashboardRepository(Protocol)` with the method the service needs |
-| 3 | `infrastructure/repositories/snowflake_dashboard_repository.py` | The Snowflake version, using `load_sql()` + `fetch_all()` |
-| 4 | `services/dashboard_service.py` | `DashboardService(repository)` with the logic (e.g. current vs previous period) |
-| 5 | `schemas/dashboard.py` | `DashboardResponse` and `KpiValue`, as in `contract.js` |
-| 6 | `api/dependencies.py` | `get_dashboard_service()` |
-| 7 | `api/routes/dashboards.py` | The route, which must check `dashboard` against the list of known ids before using it in a file name |
-| 8 | `api/router.py` | `api_router.include_router(dashboards.router, prefix="/api")` |
+## 4. How to add things
+- **A new warehouse KPI:** add `queries/kpis/<name>.sql` (returning `PERIOD`, `KPI_VALUE`) and one line `<kpi_id>: "<name>"` in `KPI_QUERIES`.
+- **A new chart:** add `queries/series/<name>.sql` and its name to the dashboard's tuple in `DASHBOARD_SERIES`.
+- **A new endpoint:** one small addition per layer: SQL (`queries/`) → contract (`domain/repositories.py`) → Snowflake repository →
+  service → schema (`schemas/`) → `api/dependencies.py` → route file (`api/routes/`) → `api/router.py`.
 
-The live stream (SSE) follows the same pattern: `routes/stream.py` → `services/stream_service.py` → a stream contract in `domain/` → a Kafka (or other) implementation in `infrastructure/`.
+- **A new live KPI:** one field in `LiveKpis` (`schemas/stream.py`), its value in `FleetState.kpis()`, the same in the mock (`liveKpis()` in
+  `dashboard/src/data/mock/fleetSimulator.js`) and a tile in `liveKpiTiles()` (`dashboard/src/pages/LiveMapPage.jsx`).
+- **A new flag alert:** one line in `FLAG_ALERTS` + its type in `AnomalyType` (`schemas/stream.py`) and `ANOMALY_TYPES` (`dashboard/src/kpis/definitions.js`).
 
-## 5. What did not change
-- URLs: `/health`, `/api/tables`, `/api/kpis/validation`.
-- JSON: byte-for-byte identical to before (checked on 2026-10-29).
-- `.env`, `requirements.txt`, the start command (`uvicorn app.main:app`).
+## 5. URLs
+`/health`, `/api/tables`, `/api/kpis/{dashboard_id}`, `/api/stream`. The old `/api/kpis/validation` (KPI 9 + 28 join checks) was removed on 2026-10-29;
+the join checks live in `tools/validate_marts.py`.

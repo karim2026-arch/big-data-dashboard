@@ -20,6 +20,12 @@ class Settings(BaseSettings):
 
     api_cors_origins: str = "http://localhost:5173"
 
+    # Live stream (Kafka silver topics). STREAM_HISTORY_MINUTES: read back this much on start, drop older rows.
+    kafka_bootstrap_servers: str
+    kafka_telemetry_topic: str
+    kafka_reefer_topic: str
+    stream_history_minutes: int = 60
+
     @property
     def cors_origins(self) -> list[str]:
         return [origin.strip() for origin in self.api_cors_origins.split(",") if origin.strip()]

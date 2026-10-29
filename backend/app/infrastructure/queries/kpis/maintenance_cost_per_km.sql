@@ -1,5 +1,5 @@
 -- KPI 44 Maintenance Cost per km (USD/km): SUM(maintenance total_cost) / SUM(trips' actual_distance_km) in the same period.
--- Period date: MAINTENANCE_DATE for maintenance, TRIP_DATE for trips.
+-- Period date: MAINTENANCE_DATE for maintenance, ARRIVAL_TS date (day the trip finished) for trips.
 WITH maintenance AS (
     SELECT
         IFF(maintenance_date >= %(current_start)s, 'value', 'previous')   AS period,
@@ -10,10 +10,10 @@ WITH maintenance AS (
 ),
 trip_km AS (
     SELECT
-        IFF(trip_date >= %(current_start)s, 'value', 'previous')          AS period,
+        IFF(arrival_ts::DATE >= %(current_start)s, 'value', 'previous')          AS period,
         SUM(actual_distance_km)                                           AS distance_km
     FROM fct_trips
-    WHERE trip_date BETWEEN %(previous_start)s AND %(current_end)s
+    WHERE arrival_ts::DATE BETWEEN %(previous_start)s AND %(current_end)s
     GROUP BY period
 )
 SELECT

@@ -8,7 +8,7 @@ WITH driver_trips AS (
         SUM(actual_distance_km)                                AS distance_km,
         SUM(idle_time_hours) / SUM(actual_duration_hours) * 100   AS kpi_24
     FROM fct_trips
-    WHERE trip_date BETWEEN %(current_start)s AND %(current_end)s
+    WHERE arrival_ts::DATE BETWEEN %(current_start)s AND %(current_end)s
       AND driver_id IS NOT NULL
     GROUP BY driver_id
 ),

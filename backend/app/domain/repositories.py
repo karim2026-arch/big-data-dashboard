@@ -14,6 +14,7 @@ class SystemRepository(Protocol):
 
 
 class KpiRepository(Protocol):
-    def fetch_kpi(self, query: str) -> dict:
-        """The single result row of the KPI query named `query` (e.g. "margin_proxy")."""
+    def fetch_rows(self, query: str, params: dict) -> list[dict]:
+        """Rows of the query named `query` (e.g. "kpis/margin_proxy", "series/lane_otd") run with `params`
+        (the period dates). Column names in lower case, numbers as int or float."""
         ...

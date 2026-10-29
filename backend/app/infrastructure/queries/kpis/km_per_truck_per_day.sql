@@ -1,12 +1,12 @@
 -- KPI 30 Km per Truck per Day (km): SUM(trips' actual_distance_km) / (trucks x days).
 -- trucks x days = number of FCT_TRUCK_DAILY rows in the period (one row per fleet truck per day, ~5,000 per day).
--- Period date: TRIP_DATE for trips, snapshot date (DIM_DATE.FULL_DATE) for truck days.
+-- Period date: ARRIVAL_TS date (day the trip finished) for trips, snapshot date (DIM_DATE.FULL_DATE) for truck days.
 WITH trip_km AS (
     SELECT
-        IFF(trip_date >= %(current_start)s, 'value', 'previous')     AS period,
+        IFF(arrival_ts::DATE >= %(current_start)s, 'value', 'previous')     AS period,
         SUM(actual_distance_km)                                      AS distance_km
     FROM fct_trips
-    WHERE trip_date BETWEEN %(previous_start)s AND %(current_end)s
+    WHERE arrival_ts::DATE BETWEEN %(previous_start)s AND %(current_end)s
     GROUP BY period
 ),
 truck_days AS (

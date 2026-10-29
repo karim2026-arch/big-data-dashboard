@@ -3,6 +3,7 @@ import {
 } from 'recharts'
 import { useTheme } from '../hooks/useTheme'
 import { columnLabel } from '../kpis/definitions'
+import NoData from './NoData'
 
 const COLORS = ['#38bdf8', '#a78bfa', '#34d399', '#fbbf24', '#f87171']
 const AXIS = { stroke: '#64748b', fontSize: 11, tickLine: false }
@@ -14,6 +15,8 @@ const CHROME = {
 const tooltipProps = (chrome) => ({
   contentStyle: { background: chrome.tooltipBg, border: `1px solid ${chrome.tooltipBorder}`, borderRadius: 8, fontSize: 12 },
   labelStyle: { color: chrome.tooltipLabel },
+  // warehouse values are not rounded (e.g. 93.3726): show at most 2 decimals
+  formatter: (value) => (typeof value === 'number' ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : value),
 })
 const MARGIN = { top: 8, right: 16, bottom: 0, left: 0 }
 
@@ -24,6 +27,7 @@ const withDefaults = (series) =>
 // band = { min, max, label } draws an "allowed range" area (e.g. cold-chain limits).
 export function LineChartView({ data, xKey, lines, band, height = 260 }) {
   const chrome = CHROME[useTheme().theme]
+  if (!data?.length) return <NoData />
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data} margin={MARGIN}>
@@ -56,6 +60,7 @@ export function LineChartView({ data, xKey, lines, band, height = 260 }) {
 export function BarChartView({ data, xKey, bars, layout = 'horizontal', stacked = false, height = 260 }) {
   const vertical = layout === 'vertical'
   const chrome = CHROME[useTheme().theme]
+  if (!data?.length) return <NoData />
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} layout={layout} margin={MARGIN}>

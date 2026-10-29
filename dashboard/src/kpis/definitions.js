@@ -15,7 +15,7 @@ export const KPIS = {
   },
   3: {
     name: 'Average Delivery Delay', unit: 'min', better: 'down', meaning: 'Average positive delay of late deliveries (early ones excluded).',
-    question: 'Q1', formula: 'Sum of positive delays (actual_datetime − scheduled_datetime) / eligible deliveries', action: 'Prioritize recurring delays.',
+    question: 'Q1', formula: 'Average of delay_minutes over late deliveries only (delay_minutes > 0)', action: 'Prioritize recurring delays.',
   },
   5: {
     name: 'Severe Delay Rate', unit: '%', better: 'down', meaning: 'Share of deliveries later than the severe threshold (assumption: 120 min).',
@@ -31,7 +31,7 @@ export const KPIS = {
   },
   8: {
     name: 'Trip Duration Variance', unit: '%', better: 'down', meaning: 'Actual vs planned trip hours. Compare lanes, not absolute value.',
-    question: 'Q4', formula: '(Actual hours − Planned hours) / Planned hours × 100', action: 'Review inaccurate time estimates and lanes with recurring overruns.',
+    question: 'Q4', formula: 'Planned = scheduled delivery − scheduled pickup; average per trip of (actual_duration_hours − planned) / planned × 100', action: 'Review inaccurate time estimates and lanes with recurring overruns.',
   },
 
   // B. Cold chain
@@ -76,36 +76,36 @@ export const KPIS = {
     question: 'Q8', formula: 'Sum of fuel_purchases.total_cost',
   },
   20: {
-    name: 'Fuel Cost per Mile', unit: 'USD/mi', better: 'down', meaning: 'Fuel cost of completed trips divided by their miles.',
-    question: 'Q8', formula: 'Fuel cost of completed trips / miles of completed trips',
+    name: 'Fuel Cost per km', unit: 'USD/km', better: 'down', meaning: 'Fuel used by trips × average price paid per liter, divided by their km.',
+    question: 'Q8', formula: 'Σ trips.fuel_liters_used × (Σ fuel_purchases.total_cost / Σ fuel_purchases.liters) / Σ trips.actual_distance_km',
   },
   21: {
-    name: 'Fuel Efficiency', unit: 'mpg', better: 'up', meaning: 'Miles per gallon. Expected range 5.8-7.8.',
-    question: 'Q9', formula: 'trips.actual_distance_miles / trips.fuel_gallons_used', action: 'Find trucks and routes that burn more fuel than similar ones.',
+    name: 'Fuel Efficiency', unit: 'L/100km', better: 'down', meaning: 'Liters per 100 km. Expected range 30-41 (= 5.8-7.8 mpg).',
+    question: 'Q9', formula: 'Average of trips.average_l_per_100km', action: 'Find trucks and routes that burn more fuel than similar ones.',
   },
   22: {
-    name: 'Fuel Price Variance', unit: '%', better: 'down', meaning: 'Price paid vs reference diesel price (same state).',
-    question: 'Q10', formula: '(fuel_purchases.price_per_gallon − diesel_prices.price_per_gallon) / diesel_prices.price_per_gallon × 100',
+    name: 'Fuel Price Variance', unit: '%', better: 'down', meaning: 'Price paid per liter vs the national diesel price of the same day (state offsets included).',
+    question: 'Q10', formula: 'Average of (fuel_purchases.price_per_liter − reference) / reference × 100, reference = diesel_prices.price_per_gallon / 3.78541',
   },
   23: {
-    name: 'Idle Fuel', unit: 'gal', better: 'down', meaning: 'Gallons burned with engine on and truck not moving.',
-    question: 'Q9', formula: 'Sum of telemetry.fuel_gph × interval where engine_on = true and speed_mph ≈ 0',
+    name: 'Idle Fuel', unit: 'L', better: 'down', meaning: 'Liters burned with engine on and truck not moving.',
+    question: 'Q9', formula: 'Sum of telemetry.fuel_gph × interval × 3.78541 where engine_on = true and speed_mph ≈ 0',
   },
   24: {
     name: 'Idle Time Share', unit: '%', better: 'down', meaning: 'Idle hours as a share of trip hours.',
     question: 'Q9', formula: 'trips.idle_time_hours / trips.actual_duration_hours × 100',
   },
   26: {
-    name: 'Revenue per Mile', unit: 'USD/mi', better: 'up', meaning: 'Load revenue + surcharge + accessorials per mile.',
-    question: 'Q11', formula: '(loads.revenue + loads.fuel_surcharge + loads.accessorial_charges) / trips.actual_distance_miles',
+    name: 'Revenue per km', unit: 'USD/km', better: 'up', meaning: 'Load revenue + surcharge + accessorials per km.',
+    question: 'Q11', formula: 'Σ (trips.revenue_usd + fuel_surcharge_usd + accessorial_charges_usd) / Σ trips.actual_distance_km',
   },
   27: {
     name: 'Fuel Cost % of Revenue', unit: '%', better: 'down', meaning: 'Trip fuel cost as a share of load revenue.',
-    question: 'Q11', formula: 'Trip fuel cost / total load revenue × 100',
+    question: 'Q11', formula: 'Trip fuel cost (liters used × average price per liter) / total load revenue × 100',
   },
   28: {
     name: 'Margin Proxy per Trip', unit: 'USD', better: 'up', meaning: 'Revenue - fuel - maintenance. A proxy, not profit.',
-    question: 'Q11', formula: 'Total load revenue − fuel cost − allocated maintenance cost',
+    question: 'Q11', formula: 'Average per trip of: total load revenue − fuel cost (liters used × average price per liter) − truck maintenance cost allocated by km',
   },
 
   // D. Utilization & safety
@@ -114,12 +114,12 @@ export const KPIS = {
     question: 'Q12', formula: 'Time driving, loading and unloading / total available time × 100',
   },
   30: {
-    name: 'Miles per Truck per Day', unit: 'mi', better: 'up', meaning: 'Trip miles / (trucks x days).',
-    question: 'Q12', formula: 'Sum of trips.actual_distance_miles / (number of trucks × days in period)',
+    name: 'Km per Truck per Day', unit: 'km', better: 'up', meaning: 'Trip km / (fleet trucks x days).',
+    question: 'Q12', formula: 'Sum of trips.actual_distance_km / truck-days (rows of fct_truck_daily in the period)',
   },
   33: {
-    name: 'Speeding Events', unit: 'per 100 mi', better: 'down', meaning: 'Speed above 70 mph (assumption, no road limits in data).',
-    question: 'Q13', formula: 'Speeding events (speed_mph > 70 for N consecutive readings) / miles traveled × 100',
+    name: 'Speeding Events', unit: 'per 100 km', better: 'down', meaning: 'Speed above 70 mph = 113 km/h (assumption, no road limits in data).',
+    question: 'Q13', formula: 'Speeding events (speed_mph > 70 for N consecutive readings) / km traveled × 100',
   },
   34: {
     name: 'Excessive Idling Events', unit: 'count', better: 'down', meaning: 'Engine on, speed ~0 for over 30 min (assumption).',
@@ -127,12 +127,12 @@ export const KPIS = {
     action: 'Coaching and idle-reduction policy.',
   },
   35: {
-    name: 'Route Deviation Rate', unit: '%', better: 'down', meaning: 'Trips with at least one confirmed deviation (> 5 mi, assumption).',
-    question: 'Q4', formula: 'Trips with a GPS point > 5 mi from the origin-destination line / eligible trips × 100',
+    name: 'Route Deviation Rate', unit: '%', better: 'down', meaning: 'Trips with at least one confirmed deviation (> 8 km = 5 mi, assumption).',
+    question: 'Q4', formula: 'Trips with a GPS point > 8 km from the origin-destination line / eligible trips × 100',
   },
   36: {
-    name: 'Incident Rate', unit: 'per 1M mi', better: 'down', meaning: 'Safety incidents per million miles. Expected ~1.4.',
-    question: 'Q14', formula: 'Count of safety_incidents / miles traveled × 1,000,000',
+    name: 'Incident Rate', unit: 'per 1M km', better: 'down', meaning: 'Safety incidents per million km. Expected ~0.9 (= 1.4 per 1M mi).',
+    question: 'Q14', formula: 'Count of safety_incidents / Σ trips.actual_distance_km × 1,000,000',
   },
   38: {
     name: 'Claim Cost', unit: 'USD', better: 'down', meaning: 'Sum of safety_incidents.claim_amount.',
@@ -149,16 +149,16 @@ export const KPIS = {
     question: 'Q15', formula: 'Sum of maintenance_records.downtime_hours',
   },
   43: {
-    name: 'Orders per Truck', unit: 'orders', better: 'down', meaning: 'Maintenance orders per truck in the period (~8/year expected).',
-    question: 'Q15', formula: 'Count of maintenance_records / number of trucks in the period',
+    name: 'Orders per Truck', unit: 'orders', better: 'down', meaning: 'Maintenance orders per truck in the 30-day period (~0.66 = ~8/year expected).',
+    question: 'Q15', formula: 'Count of maintenance orders / fleet trucks (distinct trucks in fct_truck_daily) in the period',
   },
   44: {
-    name: 'Maintenance Cost per Mile', unit: 'USD/mi', better: 'down', meaning: 'Maintenance cost / miles in the same period.',
-    question: 'Q8', formula: 'Maintenance cost in the period / miles traveled in the same period',
+    name: 'Maintenance Cost per km', unit: 'USD/km', better: 'down', meaning: 'Maintenance cost / trip km in the same period.',
+    question: 'Q8', formula: 'Σ maintenance total_cost in the period / Σ trips.actual_distance_km in the same period',
   },
   46: {
-    name: 'Truck Availability', unit: '%', better: 'up', meaning: 'Share of fleet time not in maintenance.',
-    question: 'Q15', formula: 'Time not in maintenance / total fleet time × 100',
+    name: 'Truck Availability', unit: '%', better: 'up', meaning: 'Share of fleet truck-days not in maintenance.',
+    question: 'Q15', formula: 'Truck-days with is_in_maintenance = false / all truck-days × 100 (fct_truck_daily)',
   },
 
   // G. Anomaly detection quality (against gen_anomaly_labels)
@@ -252,17 +252,22 @@ export const KPI_GROUPS = [
   { title: 'Data Platform & Pipeline', from: 54, to: 64, decisions: 'Check the data behind the business KPIs is trustworthy and timely before acting on it.' },
 ]
 
-// Anomaly families injected by the generator (gen_anomaly_labels.anomaly_type), with map colors.
+// Alert types with map colors. The first four are the generator's anomaly families (gen_anomaly_labels.anomaly_type);
+// SPEEDING, ENGINE_OVERHEATING and LOW_FUEL are live alerts made by the backend from the stream flags.
+// ROUTE_DEVIATION has no flag in the stream: only the mock simulator sends it.
 export const ANOMALY_TYPES = {
   EXCESSIVE_IDLING: { label: 'Excessive idling', color: '#f59e0b' },
   ROUTE_DEVIATION: { label: 'Route deviation', color: '#a855f7' },
   REEFER_UNIT_FAILURE: { label: 'Reefer unit failure', color: '#06b6d4' },
   COLD_CHAIN_BREACH: { label: 'Cold chain breach', color: '#ef4444' },
+  SPEEDING: { label: 'Speeding', color: '#ec4899' },
+  ENGINE_OVERHEATING: { label: 'Engine overheating', color: '#f97316' },
+  LOW_FUEL: { label: 'Low fuel', color: '#3b82f6' },
 }
 
 export function formatValue(value, unit) {
   if (value == null) return '-'
-  const digits = unit === 'USD/mi' ? 2 : Math.abs(value) >= 100 ? 0 : 1
+  const digits = unit === 'USD/km' ? 3 : Math.abs(value) >= 100 ? 0 : 1
   return value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits })
 }
 

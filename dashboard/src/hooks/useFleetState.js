@@ -6,21 +6,24 @@ const FEED_SIZE = 40
 
 // Display status of a truck. Anomalies come from backend alerts (no detection in the frontend).
 // When a truck has several active anomalies, the first in this order wins.
-const ANOMALY_PRIORITY = ['COLD_CHAIN_BREACH', 'REEFER_UNIT_FAILURE', 'ROUTE_DEVIATION', 'EXCESSIVE_IDLING']
+const ANOMALY_PRIORITY = [
+  'COLD_CHAIN_BREACH', 'REEFER_UNIT_FAILURE', 'ENGINE_OVERHEATING', 'ROUTE_DEVIATION', 'SPEEDING', 'LOW_FUEL', 'EXCESSIVE_IDLING',
+]
 
+// Without an anomaly, the status is the row's motion_status (silver stream column).
 export const STATUS_STYLE = {
   ...ANOMALY_TYPES,
-  ENGINE_ON: { label: 'Engine on', color: '#22c55e' },
-  ENGINE_OFF: { label: 'Engine off', color: '#475569' },
+  DRIVING: { label: 'Driving', color: '#22c55e' },
+  IDLING: { label: 'Idling', color: '#a3e635' },
+  PARKED: { label: 'Parked', color: '#475569' },
 }
 
 export function statusOf(telemetry, anomalyTypes) {
   const anomaly = anomalyTypes && ANOMALY_PRIORITY.find((type) => anomalyTypes.has(type))
-  if (anomaly) return anomaly
-  return telemetry.engine_on ? 'ENGINE_ON' : 'ENGINE_OFF'
+  return anomaly ?? telemetry.motion_status
 }
 
-// Live fleet picture built from the three stream events.
+// Live fleet picture built from the four stream events.
 // Big data (5,000 trucks) lives in refs so the 3D scene can read it every frame without React re-renders;
 // `tick` changes once per telemetry batch so side panels can refresh.
 export function useFleetState() {
@@ -29,6 +32,7 @@ export function useFleetState() {
   const dirty = useRef(false) // true when the 3D scene must redraw
   const [tick, setTick] = useState(0)
   const [alertFeed, setAlertFeed] = useState([])
+  const [liveKpis, setLiveKpis] = useState(null) // LiveKpis, calculated by the backend
 
   useStream('telemetry', (rows) => {
     for (const row of rows) {
@@ -56,6 +60,8 @@ export function useFleetState() {
     setAlertFeed((feed) => [alert, ...feed.filter((row) => row.anomaly_id !== alert.anomaly_id)].slice(0, FEED_SIZE))
   })
 
+  useStream('kpis', setLiveKpis)
+
   // vehicle_id -> Set of active anomaly types
   function activeTypesByVehicle() {
     const result = new Map()
@@ -66,5 +72,5 @@ export function useFleetState() {
     return result
   }
 
-  return { vehicles, dirty, tick, alertFeed, activeTypesByVehicle }
+  return { vehicles, dirty, tick, alertFeed, liveKpis, activeTypesByVehicle }
 }

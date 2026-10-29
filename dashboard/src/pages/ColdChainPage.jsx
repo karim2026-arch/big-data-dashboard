@@ -7,19 +7,23 @@ export default function ColdChainPage() {
   return (
     <DashboardShell dashboardId="cold_chain">
       {(series) => {
+        // null when the data source has no reefer stream yet (api mode): the panel then shows "No data"
         const trip = series.trip_temperature
         return (
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel
               className="lg:col-span-2"
-              title={`Cargo temperature: ${trip.trip_id} (${trip.vehicle_id} / ${trip.trailer_id}, ${trip.commodity})`}
-              subtitle={`°F, UTC time. Green band = allowed range ${trip.min_temp_f} to ${trip.max_temp_f} °F for ${trip.commodity} (simulation assumption). Gaps = missing readings.`}
+              title={trip ? `Cargo temperature: ${trip.trip_id} (${trip.vehicle_id} / ${trip.trailer_id}, ${trip.commodity})` : 'Cargo temperature'}
+              subtitle={
+                trip &&
+                `°F, UTC time. Green band = allowed range ${trip.min_temp_f} to ${trip.max_temp_f} °F for ${trip.commodity} (simulation assumption). Gaps = missing readings.`
+              }
             >
               <LineChartView
-                data={trip.readings}
+                data={trip?.readings}
                 xKey="event_ts"
                 lines={[{ key: 'cargo_temp_f', label: 'cargo_temp_f (°F)' }, { key: 'setpoint_f', label: 'setpoint_f (°F)', color: '#64748b' }]}
-                band={{ min: trip.min_temp_f, max: trip.max_temp_f, label: 'allowed range' }}
+                band={trip && { min: trip.min_temp_f, max: trip.max_temp_f, label: 'allowed range' }}
                 height={300}
               />
             </Panel>

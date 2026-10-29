@@ -12,7 +12,7 @@ export default function ExecutivePage() {
           </Panel>
           <Panel
             title="Unit economics trend"
-            subtitle="Revenue vs fuel cost per mile (USD/mi). The gap is what is left for driver pay, maintenance and profit."
+            subtitle="Revenue vs fuel cost per km (USD/km). The gap is what is left for driver pay, maintenance and profit."
           >
             <LineChartView data={series.unit_economics_trend} xKey="week_start" lines={[{ key: 'kpi_26' }, { key: 'kpi_20' }]} />
           </Panel>

@@ -11,7 +11,7 @@ trip_km AS (
     SELECT tr.model_year, SUM(t.actual_distance_km) AS distance_km
     FROM fct_trips t
     JOIN dim_truck tr ON tr.truck_key = t.truck_key
-    WHERE t.trip_date BETWEEN %(current_start)s AND %(current_end)s
+    WHERE t.arrival_ts::DATE BETWEEN %(current_start)s AND %(current_end)s
     GROUP BY tr.model_year
 )
 SELECT

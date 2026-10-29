@@ -16,6 +16,6 @@ JOIN dim_route r    ON r.route_key = t.route_key
 JOIN dim_location o ON o.location_key = r.origin_location_key
 JOIN dim_location d ON d.location_key = r.destination_location_key
 CROSS JOIN fuel_price p
-WHERE t.trip_date BETWEEN %(current_start)s AND %(current_end)s
+WHERE t.arrival_ts::DATE BETWEEN %(current_start)s AND %(current_end)s
 GROUP BY r.route_id, o.city, d.city, p.price_per_liter
 ORDER BY kpi_21 DESC

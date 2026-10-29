@@ -319,8 +319,125 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 
 **Still open:**
 - Answers from the owner to the 4 questions in [MARTS_VALIDATION_REPORT.md](MARTS_VALIDATION_REPORT.md#4-questions-for-the-model-owner).
-- `GET /api/kpis/{dashboard}` per [dashboard/src/data/contract.js](dashboard/src/data/contract.js), after the table names are known.
-- SSE stream (`VITE_STREAM_URL`) belongs to the streaming team.
+- ~~`GET /api/kpis/{dashboard}` per [dashboard/src/data/contract.js](dashboard/src/data/contract.js)~~ done, see the next ticket.
+- ~~SSE stream (`VITE_STREAM_URL`) belongs to the streaming team.~~ done, see "Live stream from Kafka over SSE".
+
+### Warehouse KPIs on the dashboard + 30-min refresh ✅ (2026-10-29)
+**What I did:** Added `GET /api/kpis/{dashboard_id}?kpi_ids=…`. It calculates every KPI card and chart that the warehouse can answer, for the last 30 days vs the previous 30 days, directly on `DBT_MARTS`. 23 KPIs + 17 charts. KPIs and charts that need the live stream or pipeline metadata return `null`. The dashboard calls it in api mode and re-fetches every 30 min. Units switched to metric everywhere (api and mock).
+
+**Decisions:**
+- Scope: KPI cards and charts together. No cache (the KPI logic moves to dbt later; now the goal is correct logic).
+- One SQL file per KPI (`queries/kpis/`), one per chart (`queries/series/`). The frontend sends the page's KPI ids (`dashboards.js` stays the only list).
+- Not in the warehouse → `null` → card shows `-`, chart shows "No data" (no mock fill in api mode). Live map keeps the simulator in api mode (stream is instant, warehouse is refreshed every 30 min).
+- Period: 30 days ending 3 days ago (trips land only when completed) vs the 30 days before. Row date = when it happened (`ACTUAL_DATE`, `TRIP_DATE` = dispatch, `PURCHASE_DATE`, `MAINTENANCE_DATE`, `INCIDENT_DATE`, snapshot date).
+- Units: metric as in the marts (km, L, L/100km, USD/km, per 1M km).
+- KPI rules: 1/2 = `on_time_flag`; 3 = average of late deliveries only (`delay_minutes > 0`: 170.4 min, vs 12.7 min if early deliveries count as 0); 5 = `delay_minutes > 120`; 8 = average per trip, planned = scheduled delivery − scheduled pickup; 20/27/28 fuel cost = consumption-based (`fuel_liters_used` × period price per liter); 21 = `AVERAGE_L_PER_100KM` as the data gives it; 22 = vs national price of the same day from `RAW_DATA.DIESEL_PRICES` (not in the marts); 30 = per fleet truck-day; 43 = per 30 days; 46 = `is_in_maintenance`.
+- KPIs 4 and 9 skipped (removed from the dashboards). KPIs 23, 29 stay null (telemetry). Platform page all null (no Airflow/dbt/S3 tables; `SNOWFLAKE.ACCOUNT_USAGE` not authorized for `AIRFLOW_ROLE`).
+- `GET /api/kpis/validation` removed (join checks stay in `tools/validate_marts.py`).
+
+**Logic:** dashboard `useKpis` → `apiSource.getKpis(id)` → `GET /api/kpis/{id}?kpi_ids=…` → route checks the id → `KpiService.dashboard()` builds the period dates → for each KPI id in `KPI_QUERIES` runs `kpis/<name>.sql` (2 rows: `value`, `previous`), for each chart in `DASHBOARD_SERIES` runs `series/<name>.sql` (or null) → `SnowflakeKpiRepository.fetch_rows()` lower-cases keys and turns `Decimal` into `float` → `DashboardResponse`. Full flow: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md), formulas: [backend/README.md](backend/README.md).
+
+**Result (period 2026-09-27 to 2026-10-26 vs 2026-08-28 to 2026-09-26):**
+
+| KPI | Current | Previous | Meaning |
+|---|---|---|---|
+| 1 On-Time Delivery (%) | 93.27 | 93.39 | 93 of 100 deliveries start within the 15-min grace period |
+| 2 On-Time Pickup (%) | 65.97 | 65.92 | Pickups are late far more often than deliveries |
+| 3 Avg Delivery Delay (min) | 170.4 | 174.4 | A late delivery is ~2.8 h late on average |
+| 5 Severe Delay (%) | 3.39 | 3.40 | 3.4% of deliveries are more than 2 h late |
+| 6 Destination Queue (min) | 31.9 | 31.2 | ~32 min wait before unloading |
+| 7 Dock Time (min) | 89.1 | 88.8 | ~1.5 h loading / unloading per stop |
+| 8 Trip Duration Variance (%) | −15.6 | −15.7 | Trips take 16% less than planned (schedule slack) |
+| 19 Total Fuel Spend (USD) | 29,023,609 | 29,688,871 | Fuel bought in 30 days |
+| 20 Fuel Cost per km (USD/km) | 0.345 | 0.353 | |
+| 21 Fuel Efficiency (L/100km) | 36.27 | 36.24 | = 6.5 mpg, inside the expected 5.8–7.8 mpg |
+| 22 Fuel Price Variance (%) | 2.70 | 2.57 | Paid 2.7% above the national price (state offsets included) |
+| 24 Idle Time Share (%) | 9.14 | 9.03 | |
+| 26 Revenue per km (USD/km) | 1.451 | 1.452 | |
+| 27 Fuel Cost % of Revenue (%) | 23.79 | 24.30 | = KPI 20 / KPI 26 (checked) |
+| 28 Margin Proxy per Trip (USD) | 3,094.53 | 3,117.40 | Revenue − fuel − maintenance, not profit |
+| 30 Km per Truck per Day (km) | 538.1 | 561.3 | ⚠️ see "Still open" (incomplete last days) |
+| 36 Incident Rate (per 1M km) | 0.756 | 0.689 | = ~1.2 per 1M mi, near the expected 1.4 |
+| 38 Claim Cost (USD) | 423,420 | 564,630 | |
+| 41 Total Maintenance Cost (USD) | 6,175,651 | 6,157,836 | |
+| 42 Maintenance Downtime (h) | 77,203 | 78,285 | |
+| 43 Orders per Truck (orders) | 0.629 | 0.629 | = ~7.7 per year, expected ~8 |
+| 44 Maintenance Cost per km (USD/km) | 0.077 | 0.073 | |
+| 46 Truck Availability (%) | 97.90 | 97.91 | |
+
+**Files:**
+- Backend new: `services/kpi_service.py`, `schemas/dashboard.py`, `queries/kpis/` 22 new files + `margin_proxy.sql` rewritten (per period, consumption fuel), `queries/series/` 17 files.
+- Backend changed: `domain/repositories.py` (`fetch_kpi` → `fetch_rows(query, params)`), `infrastructure/repositories/snowflake_kpi_repository.py`, `api/routes/kpis.py`, `api/dependencies.py`, `README.md`, `ARCHITECTURE.md`.
+- Backend deleted: `services/kpi_validation_service.py`, `schemas/kpi_validation.py`, `queries/kpis/distance_variance.sql`.
+- Dashboard new: `components/NoData.jsx`.
+- Dashboard changed: `data/api/apiSource.js` (sends `kpi_ids`, simulator for the stream), `hooks/useKpis.js` (30-min refresh), `kpis/definitions.js` (metric units, formulas), `components/charts.jsx` + `DataTable.jsx` (No data, tooltip rounding), `pages/{Executive,Delivery,Fuel,Safety,Maintenance,ColdChain}Page.jsx`, `data/mock/{kpiValues,dashboards}.js` (metric), `data/contract.js`, `README.md`.
+- No `.env` change, no new package, no database change (read-only).
+
+**Tests done:** all 23 KPI SQL and 17 chart SQL run on Snowflake (4.5 s and 9.5 s for all) ✅ · endpoint on a test instance (port 8001) for all 8 dashboards, 1–4 s each ✅ · unknown id → 404 ✅ · JSON numbers are floats, dates `YYYY-MM-DD` ✅ · KPI 27 = KPI 20 / KPI 26 ✅ · found and fixed a Snowflake precision bug (KPI 36 gave exactly 1.0: a division keeps 6 decimals, so multiply by 1,000,000 first) ✅ · `npm run build` passes ✅. Not done: clicking through the pages in a browser in api mode.
+
+**Still open:**
+- ~~The 3-day lag is not enough~~ fixed, see "Follow-up" below.
+- Repeated SQL to move into dbt later: the period fuel price (KPIs 20, 27, 28 + 2 charts) and the diesel reference (KPI 22 + 2 charts).
+- `worst_customers` leaves out customers with fewer than 10 deliveries (assumption).
+- ~~Server on port 8000 old + expired login; connection not reopened on expiry~~ fixed, see "Follow-up" below.
+- `DIESEL_PRICES` into the marts (dbt owner), then KPI 22 reads the mart.
+
+**Follow-up (2026-10-29): trips by finish day, window ends yesterday, reconnect on expired login, backend restarted**
+- **Problem:** trips counted on their start day (`TRIP_DATE`). A trip lands only when completed (59 h on average, up to 5 days), so the last start days were incomplete (24 Oct 934 trips, 25 Oct 692, 26 Oct 371) and trip totals were ~3–4% low.
+- **Fix:** trips count on the day they finished (`ARRIVAL_TS::DATE`). By finish day every day is complete (22–28 Oct: 857–951 trips). 15 SQL files changed (`trip_date` → `arrival_ts::DATE`): KPIs 8, 20, 21, 24, 26, 27, 28, 30, 36, 44 and charts `unit_economics_trend`, `fuel_efficiency_by_route`, `fuel_efficiency_by_truck`, `driver_scorecard`, `cost_by_model_year`. Window now ends yesterday (`DATA_LAG_DAYS = 1`).
+- **Result:** KPI 30 = 559.79 vs 559.77 km (the fake drop 538 vs 561 is gone). Period now 2026-09-29 to 2026-10-28.
+- **Connection fix:** `snowflake_client.fetch_all()` catches an expired login (`ReauthenticationRequest`, or codes 390111 / 390112 / 390114), opens a new connection and retries once. Tests: simulated expiry → 2 attempts, new session ✅ · real end of our session (`SYSTEM$ABORT_SESSION`, gave 390111) → next query works on a new session ✅ · a normal SQL error (2003, unknown table) is still raised, no retry ✅.
+- **Backend restarted** on port 8000 with `--reload`, as a separate Windows process (survives the terminal). Logs: `backend/uvicorn.log`, `backend/uvicorn.err.log` (added to `.gitignore`), PID in `backend/uvicorn.pid`. `/health` 200, all dashboards 200 in 0.2–1.6 s ✅.
+- **Files:** `backend/app/infrastructure/snowflake_client.py`, `backend/app/services/kpi_service.py`, the 15 SQL files above, `backend/README.md`, `backend/ARCHITECTURE.md`, `.gitignore`.
+- ⚠️ **Still open:** yesterday is not fully loaded yet at midday (28 Oct at 12:30 EST: delivery events 690 of ~920, fuel purchases 1,281 of ~1,800, maintenance 50 of ~110). Sums of these tables (KPIs 19, 38, 41, 42, 43, and the incident count in 36) are ~1–2% low until the day completes. Pickup events have the same issue as trips had (saved only when the trip finishes): KPI 2 and 7 are rates/averages, so the effect is small.
+
+### Live stream from Kafka over SSE ✅ (2026-10-29)
+**What I did:** The backend reads the two Kafka silver topics, keeps the latest row of every truck in memory, makes alerts from the row flags, calculates the live KPIs, and pushes all of it to the dashboard over Server-Sent Events (`GET /api/stream`). The live map in api mode now uses this instead of the simulator, and shows a new "Live KPIs" panel. Details: [backend/README.md](backend/README.md#live-stream-get-apistream), [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md#live-stream-files-get-apistream).
+
+**What the data is (measured 2026-10-29, read-only):**
+| Topic | Partitions | Batch every | Rows per batch | Age of newest reading on arrival | Duplicates |
+|---|---|---|---|---|---|
+| `fleet.silver.telemetry.v1` | 3 | 5.0 min | ~2,150 (one per truck) | ~10 min | ~0.4% (same row again, without `updated_at`) |
+| `fleet.silver.reefer.v1` | 3 | 5.0 min | ~1,180 (one per truck) | ~10 min | same |
+- Proof that it is batches, not a continuous stream: Kafka's own timestamps put 9,000 telemetry messages of 20 min into only 6 seconds; a 400 s live watch saw messages in 2 seconds only.
+- Kafka keeps ~11 h (oldest message 2026-10-28 23:24 UTC). The last hour = ~26k telemetry + ~14k reefer messages.
+- `is_idling` = `motion_status = IDLING` (idle now, not "over 30 min"). `stream_latency_sec` is always null. No `ingest_ts` in silver rows.
+- First connection was blocked (timeout from my PC, Colab and this machine); the owner opened port 9092, then it worked.
+
+**Decisions:**
+- aiokafka (async, same loop as FastAPI) · no consumer group, nothing committed · state in a Python dict in memory (no Redis) · FastAPI's built-in SSE (`fastapi.sse`, no new SSE package).
+- `STREAM_HISTORY_MINUTES=60`, one key for both: read back 60 min from Kafka on start, drop rows whose `event_ts` is older than 60 min.
+- Duplicates / late rows: keep a row only if its `event_ts` is newer than the truck's stored row.
+- Send every 1 s, only when something changed. Every time rule uses `event_ts`, so a faster upstream batch (1 min, 2 s) needs no code change.
+- Live KPIs: truck counts (+ per `motion_status`), counts of `is_speeding` / `is_engine_overheating` / `is_low_fuel` / `is_reefer_unit_failure`, cold-chain compliance (%) overall and per `commodity_type`, data age (min).
+- Alerts option b: flag alerts (`SPEEDING`, `ENGINE_OVERHEATING`, `LOW_FUEL`, `COLD_CHAIN_BREACH`, `REEFER_UNIT_FAILURE`) + `EXCESSIVE_IDLING` after 30 min of `is_idling`. `IDLING` alone is only a map color. No `ROUTE_DEVIATION` live (no flag).
+- New viewer gets a full snapshot: every truck's latest rows, active alerts, last 40 alert changes, KPIs.
+- Endpoint `/api/stream` (the dashboard `.env` had `/stream`, changed).
+
+**Logic:** `KafkaStreamSource.messages(since)` (one consumer on both topics, each partition moved to `since` with `offsets_for_times`) → `StreamService._read()` calls `FleetState.apply(kind, row, now)` for each message (retries every 10 s if Kafka fails) → every second `StreamService._send_changes()` calls `FleetState.take_changes(now)` (drops rows older than 60 min, ends their alerts, returns the new rows + alert changes + KPIs, or nothing) and puts the events in every viewer's queue → `GET /api/stream` yields the snapshot, then the queue, as SSE events `telemetry`, `reefer`, `alert`, `kpis` → dashboard `apiSource.subscribe()` (one shared `EventSource`) → `useFleetState()` → map, alert feed, Live KPIs panel.
+
+**Files:**
+- Backend new: `app/domain/stream_source.py`, `app/infrastructure/kafka_stream_source.py`, `app/services/fleet_state.py`, `app/services/stream_service.py`, `app/schemas/stream.py`, `app/api/routes/stream.py`.
+- Backend changed: `app/core/config.py` (4 settings), `app/api/dependencies.py` (one shared `stream_service`), `app/api/router.py`, `app/main.py` (start/stop the stream), `requirements.txt` (`aiokafka>=0.12`, `fastapi>=0.141`), `.env.example`, `README.md`, `ARCHITECTURE.md`.
+- Dashboard changed: `src/data/api/apiSource.js` (EventSource again instead of the simulator), `src/hooks/useFleetState.js` (`kpis` event, status from `motion_status`, new alert types), `src/pages/LiveMapPage.jsx` (Live KPIs panel, new columns), `src/kpis/definitions.js` (`SPEEDING`, `ENGINE_OVERHEATING`, `LOW_FUEL`), `src/data/mock/fleetSimulator.js` (silver columns + `kpis` event), `src/data/contract.js`, `.env.example`, `README.md`.
+- **`.env` changes:** `backend/.env` + 4 lines (`KAFKA_BOOTSTRAP_SERVERS`, `KAFKA_TELEMETRY_TOPIC`, `KAFKA_REEFER_TOPIC`, `STREAM_HISTORY_MINUTES`); `dashboard/.env.local` `VITE_STREAM_URL` → `http://localhost:8000/api/stream`.
+- Package installed in `.venv`: `aiokafka 0.15.0`. No database change.
+
+**Tests done:**
+- Logic with fake rows (7 checks, all pass ✅): duplicate / late / older-than-60-min rows dropped · flag alert starts and ends with the same `anomaly_id` · `EXCESSIVE_IDLING` not at 29 min, yes at 30 min with `start_ts` = first idle row · KPIs incl. compliance without null `cargo_temp_f` and per commodity · snapshot = one event per alert (latest version) · rows expire after 60 min and their alerts end · `StreamService`: snapshot first, then changes, viewer queue removed on disconnect.
+- Real Kafka on a test instance (port 8001) ✅: snapshot 4.1 MB (telemetry 3.29 MB = 5,000 rows × 658 B, reefer 0.76 MB), first byte 0.66 s; KPIs: 5,000 trucks (3,543 parked / 1,215 driving / 242 idling), 46 speeding, 55 low fuel, 0 overheating, 1,205 reefers, compliance 100.0%, data age 13.0 min; 234 active alerts (133 `EXCESSIVE_IDLING`, 55 `LOW_FUEL`, 46 `SPEEDING`).
+- Kafka down (first version had a bug: topic "not found") → the reader logged it and retried every 10 s, the API kept answering ✅. Bug fixed (topics passed to the consumer, aiokafka assigns all 6 partitions).
+- `npm run build` passes ✅. Not done: clicking through the live map in a browser in api and mock mode.
+
+**Still open:**
+- **Server on port 8000 restarted** (2026-10-29) as a separate process with `--reload --timeout-graceful-shutdown 3` (logs `backend/uvicorn.log`, `backend/uvicorn.err.log`, PID in `backend/uvicorn.pid`). Before the flag, an open dashboard tab (SSE) blocked every reload forever. With it, a reload finishes in 18–55 s ✅.
+- ⚠️ **After a `--reload`, an open live-map tab freezes:** on Windows the old connection is not closed (tested: the SSE client stayed connected and got no more data), so `EventSource` does not reconnect. Refresh the page after a backend reload. Only in dev with `--reload`; a real stop/start closes the connection. Possible fix (not decided): the backend sends `kpis` every ~30 s even without changes, and the frontend reconnects when nothing arrived for ~90 s.
+- Snapshot is ~4 MB per new viewer (all columns, 5,000 trucks). Fine on localhost; for remote viewers: send only the columns the dashboard uses, or gzip.
+- An open tab keeps a truck on the map after the backend dropped it (no "removed" event); its alerts do end. A reload of the page is clean.
+- After an `EventSource` reconnect the old alerts stay in the browser; ended alerts that are no longer in the last 40 can stay "active" until the page reloads.
+- 133 `EXCESSIVE_IDLING` of 242 idling trucks looks high: compare with `gen_anomaly_labels` (KPIs 51–53) later.
+- Ask the owner: `retention.ms` of the two topics (must be ≥ 60 min), and whether the 5-min batch can be faster.
+- `Notion_Data_Catalog.md` still says "Kafka is not used" and lists the old topic names.
 
 ## 📌 Open items (later)
 - **Team access:** teammates need Snowflake, Airbyte and dbt access. Plan: a personal Snowflake user each (`snowflake/02_team_users.sql`), Airbyte workspace invites, and their own `profiles.yml`. Still to decide: access level (project roles + `SYSADMIN`, or `ACCOUNTADMIN`), usernames and emails.

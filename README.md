@@ -8,6 +8,7 @@ A Python generator produces realistic, intentionally dirty data. The platform in
 
 | Document | What it contains |
 |---|---|
+| [RUN.md](RUN.md) | **How to start the application locally** (backend + dashboard), checks, and common problems |
 | [Notion_Data_Catalog.md](Notion_Data_Catalog.md) | All 16 tables and their columns, S3 layout, data quality notes, the 64 KPIs, dashboards, generator Q&A |
 | [Notion_Documentation.md](Notion_Documentation.md) | Team setup log: EC2, Kafka, IAM, S3, plus the step templates for each tool |
 | [Notion: Data Catalog](https://app.notion.com/p/Data-Catalog-404961599a4880f6898eea33b93d731d) / [Notion: Documentation](https://app.notion.com/p/Documentation-3ff961599a4880dc9232c35ae49c5409) | Live sources of the two files above |

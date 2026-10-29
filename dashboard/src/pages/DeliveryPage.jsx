@@ -5,7 +5,9 @@ import DashboardShell from '../components/DashboardShell'
 import DataTable from '../components/DataTable'
 import { lane } from '../components/format'
 import Heatmap from '../components/Heatmap'
+import MapOverlay from '../components/MapOverlay'
 import Panel from '../components/Panel'
+import { formatValue } from '../kpis/definitions'
 import MapCanvas from '../scene/MapCanvas'
 import RouteArcs from '../scene/RouteArcs'
 
@@ -15,6 +17,9 @@ const OTD_MAX = 100
 // Taller arc = worse lane, so problem lanes stand out.
 const arcHeight = (row) => 0.5 + (100 - row.kpi_1) * 0.3
 const arcColor = (row) => scaleColor(row.kpi_1, OTD_MIN, OTD_MAX)
+// Legend bar sampled from the same scale as the arcs, so legend and arcs always match.
+const OTD_LEGEND_STOPS = [80, 85, 90, 95, 100]
+const OTD_GRADIENT = `linear-gradient(to right, ${OTD_LEGEND_STOPS.map((value) => scaleColor(value, OTD_MIN, OTD_MAX)).join(', ')})`
 
 function LaneMap({ lanes }) {
   const [hovered, setHovered] = useState(null)
@@ -23,18 +28,27 @@ function LaneMap({ lanes }) {
       <MapCanvas>
         <RouteArcs lanes={lanes} heightOf={arcHeight} colorOf={arcColor} onHover={setHovered} />
       </MapCanvas>
-      <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-white/90 px-3 py-2 text-xs text-slate-700 dark:bg-slate-900/90 dark:text-slate-300">
+      <MapOverlay className="bottom-3 left-3">
+        <div className="mb-1 font-semibold text-slate-900 dark:text-slate-100">Arc color = on-time delivery (%)</div>
+        <div className="h-2 w-44 rounded-sm" style={{ background: OTD_GRADIENT }} />
+        <div className="flex justify-between">
+          <span>≤ {OTD_MIN}</span>
+          <span>{(OTD_MIN + OTD_MAX) / 2}</span>
+          <span>{OTD_MAX}</span>
+        </div>
+      </MapOverlay>
+      <MapOverlay className="left-3 top-3">
         {hovered ? (
           <>
             <div className="font-semibold text-slate-900 dark:text-slate-100">{lane(hovered)}</div>
-            <div>On-time delivery: {hovered.kpi_1} %</div>
+            <div>On-time delivery: {formatValue(hovered.kpi_1, '%')} %</div>
             <div>Deliveries: {hovered.deliveries.toLocaleString('en-US')}</div>
-            <div>Typical distance: {hovered.typical_distance_miles.toLocaleString('en-US')} mi</div>
+            <div>Typical distance: {formatValue(hovered.typical_distance_km, 'km')} km</div>
           </>
         ) : (
           'Hover a lane'
         )}
-      </div>
+      </MapOverlay>
     </div>
   )
 }

@@ -12,7 +12,8 @@ import {
 const PERIOD = 'Last 30 days vs previous 30 days'
 const WEEKS = 12
 const DAYS = 14
-const DIESEL_REFERENCE_PRICE = 3.85 // USD/gal, national diesel_prices value
+const DIESEL_REFERENCE_PRICE = 1.017 // USD/L, national diesel_prices value (3.85 USD/gal / 3.78541)
+const KM_PER_MILE = 1.609344 // reference.js routes keep the source's miles (the simulator drives in mph)
 
 const round = (value, digits = 1) => Math.round(value * 10 ** digits) / 10 ** digits
 const kpiValue = (kpiId) => MOCK_KPI_VALUES[kpiId][0]
@@ -46,20 +47,21 @@ const SERIES_BUILDERS = {
     const weeks = pastDates(WEEKS, 7)
     const otd = walkTo(rng, kpiValue(1), WEEKS, 1.2)
     const compliance = walkTo(rng, kpiValue(11), WEEKS, 1)
-    const fuelCostPerMile = walkTo(rng, kpiValue(20), WEEKS, 0.015)
-    const revenuePerMile = walkTo(rng, kpiValue(26), WEEKS, 0.04)
+    const fuelCostPerKm = walkTo(rng, kpiValue(20), WEEKS, 0.01)
+    const revenuePerKm = walkTo(rng, kpiValue(26), WEEKS, 0.025)
     return {
       service_trend: weeks.map((week_start, i) => ({ week_start, kpi_1: round(otd[i]), kpi_11: round(compliance[i]) })),
       unit_economics_trend: weeks.map((week_start, i) => ({
-        week_start, kpi_26: round(revenuePerMile[i], 2), kpi_20: round(fuelCostPerMile[i], 2),
+        week_start, kpi_26: round(revenuePerKm[i], 3), kpi_20: round(fuelCostPerKm[i], 3),
       })),
     }
   },
 
   delivery(rng) {
     return {
-      lane_otd: ROUTES.map((route) => ({
+      lane_otd: ROUTES.map(({ typical_distance_miles, ...route }) => ({
         ...route,
+        typical_distance_km: Math.round(typical_distance_miles * KM_PER_MILE),
         deliveries: rng.int(40, 400),
         kpi_1: round(rng.between(76, 99.5)),
       })),
@@ -120,35 +122,40 @@ const SERIES_BUILDERS = {
   fuel(rng) {
     const weeks = pastDates(WEEKS, 7)
     const weeklySpend = walkTo(rng, kpiValue(19) / 4.3, WEEKS, 150_000)
+    // State price offsets in USD/L (CA much higher than TX, as in the simulator)
     const stateOffsets = [
-      ['CA', 0.95], ['WA', 0.55], ['IL', 0.25], ['NJ', 0.2], ['AZ', 0.15], ['UT', 0.12], ['CO', 0.1], ['MN', 0.05],
-      ['IN', 0.02], ['OH', 0], ['FL', -0.02], ['NC', -0.05], ['GA', -0.08], ['TN', -0.1], ['MO', -0.15], ['TX', -0.2],
+      ['CA', 0.25], ['WA', 0.145], ['IL', 0.066], ['NJ', 0.053], ['AZ', 0.04], ['UT', 0.032], ['CO', 0.026], ['MN', 0.013],
+      ['IN', 0.005], ['OH', 0], ['FL', -0.005], ['NC', -0.013], ['GA', -0.021], ['TN', -0.026], ['MO', -0.04], ['TX', -0.053],
     ]
     return {
       fuel_spend_trend: weeks.map((week_start, i) => ({ week_start, total_cost: Math.round(weeklySpend[i]) })),
-      mpg_by_route: ROUTES.map(({ route_id, origin_city, destination_city }) => {
-        const mpg = rng.between(5.8, 7.8)
-        return { route_id, origin_city, destination_city, kpi_21: round(mpg, 2), kpi_20: round(DIESEL_REFERENCE_PRICE / mpg, 2) }
-      }).sort(ascending('kpi_21')),
-      mpg_by_truck: Array.from({ length: 10 }, () => ({
-        truck_id: padId('TRK', rng.int(1, 5000)), make: rng.pick(MAKES), kpi_21: round(rng.between(5.8, 6.2), 2),
-      })).sort(ascending('kpi_21')),
+      // Least efficient first (highest L/100km), like the warehouse query
+      fuel_efficiency_by_route: ROUTES.map(({ route_id, origin_city, destination_city }) => {
+        const litersPer100km = rng.between(30.2, 40.6)
+        return {
+          route_id, origin_city, destination_city,
+          kpi_21: round(litersPer100km, 2), kpi_20: round((DIESEL_REFERENCE_PRICE * litersPer100km) / 100, 3),
+        }
+      }).sort(descending('kpi_21')),
+      fuel_efficiency_by_truck: Array.from({ length: 10 }, () => ({
+        truck_id: padId('TRK', rng.int(1, 5000)), make: rng.pick(MAKES), kpi_21: round(rng.between(38, 40.6), 2),
+      })).sort(descending('kpi_21')),
       price_by_state: stateOffsets.map(([location_state, offset]) => ({
         location_state,
-        price_per_gallon: round(DIESEL_REFERENCE_PRICE + offset + rng.between(-0.05, 0.05), 2),
-        reference_price_per_gallon: DIESEL_REFERENCE_PRICE,
+        price_per_liter: round(DIESEL_REFERENCE_PRICE + offset + rng.between(-0.013, 0.013), 3),
+        reference_price_per_liter: DIESEL_REFERENCE_PRICE,
       })),
       purchase_outliers: Array.from({ length: 8 }, () => {
-        const gallons = round(rng.between(40, 260))
-        const price_per_gallon = round(DIESEL_REFERENCE_PRICE * rng.between(1.12, 1.35), 2)
+        const liters = round(rng.between(150, 985))
+        const price_per_liter = round(DIESEL_REFERENCE_PRICE * rng.between(1.12, 1.35), 3)
         return {
           fuel_purchase_id: padId('FUEL', rng.int(1, 999999), 9),
           truck_id: padId('TRK', rng.int(1, 5000)),
           location_state: rng.pick(stateOffsets)[0],
-          gallons,
-          price_per_gallon,
-          total_cost: round(gallons * price_per_gallon, 2),
-          kpi_22: round((price_per_gallon / DIESEL_REFERENCE_PRICE - 1) * 100),
+          liters,
+          price_per_liter,
+          total_cost: round(liters * price_per_liter, 2),
+          kpi_22: round((price_per_liter / DIESEL_REFERENCE_PRICE - 1) * 100),
         }
       }).sort(descending('kpi_22')),
     }
@@ -163,12 +170,12 @@ const SERIES_BUILDERS = {
         driver_id: padId('DRV', rng.int(1, 6000)),
         first_name,
         last_name: LAST_NAMES[index],
-        miles: rng.int(6000, 14000),
-        kpi_33: round(rng.between(0.05, 1.4), 2),
+        distance_km: rng.int(9_600, 22_500),
+        kpi_33: round(rng.between(0.03, 0.87), 2),
         kpi_34: rng.int(0, 9),
         kpi_24: round(rng.between(4, 18)),
         incidents: rng.int(0, 2),
-      })).sort(descending('kpi_33')),
+      })).sort(descending('incidents')),
       incidents_by_type: INCIDENT_TYPES.map((incident_type) => ({
         incident_type, incidents: rng.int(4, 40), claim_amount: rng.int(50_000, 1_400_000),
       })).sort(descending('claim_amount')),
@@ -198,7 +205,7 @@ const SERIES_BUILDERS = {
       })).sort(descending('orders')),
       // Flat on purpose: the simulator assigns maintenance randomly, so there is no real age effect (catalog A.11).
       cost_by_model_year: Array.from({ length: 10 }, (_, i) => ({
-        model_year: 2016 + i, kpi_44: round(kpiValue(44) + rng.between(-0.015, 0.015), 3),
+        model_year: 2016 + i, kpi_44: round(kpiValue(44) + rng.between(-0.01, 0.01), 3),
       })),
     }
   },
