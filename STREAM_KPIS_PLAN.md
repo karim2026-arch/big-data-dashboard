@@ -1,6 +1,11 @@
-# Plan: stream KPIs + moving trucks, all from Kafka ⏳ (step 1 ✅, steps 2–3 ⬜)
+# Plan: stream KPIs + moving trucks, all from Kafka ⏳ (steps 1–2 ✅, step 3 ⬜)
 
-**Status:** step 1 (backend KPIs + charts) done 2026-10-29, details and tests in [WORK_LOG.md](WORK_LOG.md) ("Stream KPIs + moving trucks from Kafka"). Answers to section 7: Q1–Q4 yes, Q5 normal summary + flow.
+**Status:**
+- Step 1 (backend KPIs + charts) ✅ done 2026-10-29: [WORK_LOG.md](WORK_LOG.md), "Stream KPIs + moving trucks from Kafka".
+- Step 2 (pages show them) ✅ done 2026-10-29: [WORK_LOG.md](WORK_LOG.md), "Dashboard pages show the stream KPIs (step 2)".
+- Step 3 (map replay, section 4) ⬜ not started.
+
+Answers to section 7: Q1–Q4 yes, Q5 normal summary + flow.
 
 **Goal:** every KPI and chart that depends on telemetry / reefer data is calculated from the Kafka silver topics
 (not the warehouse), sent over `GET /api/stream`, and updated on the page when a new Kafka batch arrives.
@@ -129,10 +134,11 @@ Removed (need data Kafka does not have): `kpi_33` / `kpi_34` per driver in `driv
 | `backend/app/services/fleet_state.py` | Feed the history, build `stream_kpis` ✅ · send every new row, snapshot for replay (step 3) ⬜ |
 | `backend/app/schemas/stream.py` ✅ | `StreamKpis` model, `EventName` (`?events=` filter in `api/routes/stream.py` ✅) |
 | `backend/app/services/stream_service.py` ✅ | Read back 150 min on start (2 windows + 30 min) |
-| `dashboard/src/hooks/useStreamKpis.js` (new) | Subscribes to `stream_kpis` |
-| `dashboard/src/components/DashboardShell.jsx`, `KpiCard.jsx` | Merge stream values over REST nulls; stream cards show "last 60 min (stream)" |
+| ~~`dashboard/src/hooks/useStreamKpis.js` (new)~~ | Not needed: `DashboardShell` calls the existing `useStream('stream_kpis', ...)` (one line) |
+| `dashboard/src/components/DashboardShell.jsx` ✅ (`KpiCard.jsx` unchanged) | Merge stream values over REST nulls ✅; instead of a tag per card, the header shows a 2nd period line "Live (Kafka): …" (owner's choice) |
+| `dashboard/src/data/api/apiSource.js` ✅ (added) | `?events=` of the subscribed event types, one reconnect per page change, close on `pagehide` |
 | `dashboard/src/hooks/useFleetState.js`, `scene/TruckLayer.jsx`, `pages/LiveMapPage.jsx` | Replay |
-| `dashboard/src/pages/ColdChainPage.jsx` | Title when `trip_id` is null |
+| `dashboard/src/pages/ColdChainPage.jsx` ✅ | Title when `trip_id` is null |
 | `dashboard/src/data/contract.js`, READMEs, `ARCHITECTURE.md`, `WORK_LOG.md` | Docs |
 
 - **`.env`:** no change. `STREAM_HISTORY_MINUTES=60` stays; the KPI window = 60 and the backend keeps 2 × 60 + 30 min (~42 MB).

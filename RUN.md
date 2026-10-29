@@ -121,7 +121,7 @@ Press **Ctrl+C** in each terminal: the dashboard first, then the backend.
 | Live KPIs say "Waiting for the stream…" | Backend not running, or still reading Kafka | Start the backend, wait 10 s, refresh |
 | `npm run dev` fails: port 5173 in use | Another dashboard is already running | Stop it, or close the other terminal |
 | Backend fails: port 8000 in use (`[WinError 10048]`) | Another backend is already running | Find it: `Get-NetTCPConnection -LocalPort 8000 -State Listen` → stop that PID: `taskkill /PID <pid> /T /F` |
-| Dashboard pages show `-` / "No data" for some KPIs | Those KPIs are not in the warehouse yet (pipeline metadata, some stream KPIs) | Expected, see [backend/README.md](backend/README.md) |
+| Stream KPI cards (cold chain, idling, speeding, platform) show `-` / "No data" | They come from Kafka, and the backend has not read Kafka yet (start-up, or Kafka not reachable) | Wait about 10 s and check section 1 (network access to Kafka). See [backend/README.md](backend/README.md#live-stream-get-apistream) |
 
 ---
 

@@ -8,16 +8,17 @@ export default function ColdChainPage() {
   return (
     <DashboardShell dashboardId="cold_chain">
       {(series) => {
-        // null while the reefer stream is not in the warehouse: the panel then shows "No data"
+        // From the live stream (stream_kpis): the trailer with the longest excursion in the window (Kafka has no trip_id).
+        // null when the window has no excursion: the panel then shows "No data"
         const trip = series.trip_temperature
         return (
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel
               className="lg:col-span-2"
-              title={trip ? `Cargo temperature: ${trip.trip_id} (${trip.vehicle_id} / ${trip.trailer_id}, ${trip.commodity})` : 'Cargo temperature'}
+              title={trip ? `Cargo temperature: ${trip.trailer_id} (${trip.vehicle_id}, ${trip.commodity})` : 'Cargo temperature'}
               subtitle={
                 trip &&
-                `°F. Green band = allowed range ${trip.min_temp_f} to ${trip.max_temp_f} °F for ${trip.commodity}. Gaps = missing readings.`
+                `°F. Trailer with the longest excursion in the live window. Green band = allowed range ${trip.min_temp_f} to ${trip.max_temp_f} °F for ${trip.commodity}. Gaps = missing readings.`
               }
             >
               <LineChartView

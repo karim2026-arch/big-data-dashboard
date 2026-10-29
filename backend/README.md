@@ -115,3 +115,4 @@ Shape: `DashboardResponse` in [../dashboard/src/data/contract.js](../dashboard/s
 | 43 Orders per Truck (orders) | maintenance orders / distinct trucks in `FCT_TRUCK_DAILY`, per 30 days |
 | 44 Maintenance Cost per km (USD/km) | SUM maintenance `total_cost` / SUM trip km |
 | 46 Truck Availability (%) | truck-days with `is_in_maintenance = FALSE` / all truck-days × 100 |
+| 65 Warehouse Data Freshness (min) | now − newest `_AIRBYTE_EXTRACTED_AT` over the 13 `RAW_DATA` tables (no previous) |

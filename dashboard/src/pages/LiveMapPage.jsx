@@ -1,11 +1,14 @@
 import { Suspense, useState } from 'react'
 import DashboardShell from '../components/DashboardShell'
+import FilterChips from '../components/FilterChips'
 import { dateTime, hhmm, yesNo } from '../components/format'
 import MapOverlay from '../components/MapOverlay'
 import Panel from '../components/Panel'
-import { STATUS_STYLE, hasPosition, statusOf, useFleetState } from '../hooks/useFleetState'
+import { FACILITIES } from '../data/facilities'
+import { MOTION_STATUS_LABEL, STATUS_STYLE, hasPosition, statusOf, useFleetState } from '../hooks/useFleetState'
 import { useHighlight } from '../hooks/useHighlight'
 import { ANOMALY_TYPES } from '../kpis/definitions'
+import FacilityLayer from '../scene/FacilityLayer'
 import MapCanvas from '../scene/MapCanvas'
 import TruckLayer from '../scene/TruckLayer'
 
@@ -24,7 +27,7 @@ function liveKpiTiles(kpis) {
   const byCommodity = Object.entries(kpis.cold_chain_compliance_pct_by_commodity).map(([commodity, pct]) => `${commodity} ${pct} %`)
   return [
     ['Trucks reporting', kpis.trucks_reporting, 'trucks', 'Latest row in the kept history'],
-    ...['DRIVING', 'IDLING', 'PARKED'].map((status) => [STATUS_STYLE[status].label, kpis.motion_status[status] ?? 0, 'trucks', 'motion_status now']),
+    ...Object.entries(MOTION_STATUS_LABEL).map(([status, label]) => [label, kpis.motion_status[status] ?? 0, 'trucks', 'motion_status now']),
     ['Speeding', kpis.is_speeding, 'trucks', 'is_speeding now'],
     ['Engine overheating', kpis.is_engine_overheating, 'trucks', 'is_engine_overheating now'],
     ['Low fuel', kpis.is_low_fuel, 'trucks', 'is_low_fuel now'],
@@ -123,6 +126,8 @@ function AlertFeedRow({ alert, lightFirst, onSelect }) {
 export default function LiveMapPage() {
   const fleet = useFleetState()
   const [selectedId, setSelectedId] = useState(null)
+  const [hoveredFacility, setHoveredFacility] = useState(null)
+  const [hiddenStatuses, setHiddenStatuses] = useState(() => new Set()) // legend filter: statuses not drawn on the map
 
   const { counts, unknownPosition } = countByStatus(fleet)
   const selected = selectedId && fleet.vehicles.current.get(selectedId)
@@ -141,23 +146,37 @@ export default function LiveMapPage() {
         >
           <div className="relative h-[60vh] min-h-[420px] overflow-hidden rounded-lg">
             <MapCanvas>
+              <FacilityLayer onHover={setHoveredFacility} />
               <Suspense fallback={null}>
-                <TruckLayer fleet={fleet} selectedId={selectedId} onSelect={setSelectedId} />
+                <TruckLayer fleet={fleet} selectedId={selectedId} hiddenStatuses={hiddenStatuses} onSelect={setSelectedId} />
               </Suspense>
             </MapCanvas>
-            <MapOverlay className="bottom-3 left-3 space-y-0.5">
-              <div className="mb-1 font-semibold text-slate-900 dark:text-slate-100">Truck color = status</div>
-              {Object.entries(STATUS_STYLE).map(([status, style]) => (
-                <div key={status} className="flex items-center gap-1.5">
-                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: style.color }} />
-                  {style.label}: <span className="text-slate-900 dark:text-slate-100">{counts[status].toLocaleString('en-US')}</span> trucks
-                </div>
-              ))}
-              <div className="flex items-center gap-1.5">
+            {hoveredFacility && (
+              <MapOverlay className="left-3 top-3">
+                <div className="font-semibold text-slate-900 dark:text-slate-100">{hoveredFacility.facility_name}</div>
+                <div>{hoveredFacility.facility_type} · {hoveredFacility.city}, {hoveredFacility.state_code}</div>
+              </MapOverlay>
+            )}
+          </div>
+
+          {/* Color legend + filter, under the map */}
+          <div className="mt-3 space-y-2 text-xs text-slate-700 dark:text-slate-300">
+            <FilterChips
+              title="Truck color = status (click to show / hide)"
+              items={Object.entries(STATUS_STYLE).map(([status, style]) => ({ key: status, label: style.label, color: style.color, count: counts[status], unit: 'trucks' }))}
+              hidden={hiddenStatuses}
+              onChange={setHiddenStatuses}
+            />
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span className="flex items-center gap-1.5">
                 <span className="inline-block h-2.5 w-2.5 rounded-sm border border-dashed border-slate-400" />
                 Position unknown (not on map): <span className="text-slate-900 dark:text-slate-100">{unknownPosition.toLocaleString('en-US')}</span> trucks
-              </div>
-            </MapOverlay>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-700 dark:bg-slate-200" />
+                Facility (building): <span className="text-slate-900 dark:text-slate-100">{FACILITIES.length}</span> facilities
+              </span>
+            </div>
           </div>
         </Panel>
 

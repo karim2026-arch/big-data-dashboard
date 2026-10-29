@@ -7,11 +7,11 @@ import { ANOMALY_TYPES } from '../kpis/definitions'
 import { MAP_SCALE, project } from './projection'
 
 const CAPACITY = 10_000 // max trucks drawn
-const HEIGHT = 0.1
+const HEIGHT = 0.4 // scene units: truck center above the map, grows with TRUCK_LENGTH so the truck sits on the map
 const SCALE = { normal: 1, anomaly: 2.6, selected: 4.5 }
 const MODEL_URL = '/models/truck_toyota_corsa_b.glb'
 const MODEL_BODY_NODE = 'TOY_CORSB_01_-_Default_0' // textured body; the 10-triangle black part is dropped
-const TRUCK_LENGTH = 0.25 // scene units (~6 mi with MAP_SCALE 3), so the shape reads when zoomed in
+const TRUCK_LENGTH = 1 // scene units (~23 mi with MAP_SCALE 3), so the shape reads when zoomed in
 const MODEL_YAW = Math.PI // model front is +Z; heading_deg 0 = north = -Z
 const SNAP_DISTANCE = MAP_SCALE // scene units (1 degree, ~69 mi): a bigger move is a new trip, so jump instead of gliding across the map
 const MAX_INTERVAL_MS = 5000 // cap on the measured batch gap, so a paused tab doesn't make the next glide crawl
@@ -38,7 +38,8 @@ function placeAt(object, { from, to }, progress) {
 
 // All trucks as ONE instanced mesh (one draw call). Each new telemetry batch starts a glide from where a truck
 // is drawn to its new position, lasting one batch gap, so trucks are drawn ~one batch behind the data.
-export default function TruckLayer({ fleet, selectedId, onSelect }) {
+// hiddenStatuses = Set of statuses not drawn (legend filter); the selected truck is always drawn.
+export default function TruckLayer({ fleet, selectedId, hiddenStatuses, onSelect }) {
   const meshRef = useRef()
   const instanceIds = useRef([]) // instance index -> vehicle_id, for clicks
   const segments = useRef(new Map()) // vehicle_id -> { telemetry, from, to, scale }
@@ -57,8 +58,8 @@ export default function TruckLayer({ fleet, selectedId, onSelect }) {
   }, [])
 
   useEffect(() => {
-    fleet.dirty.current = true // redraw to highlight the new selection
-  }, [selectedId, fleet.dirty])
+    fleet.dirty.current = true // redraw to highlight the new selection / apply the new filter
+  }, [selectedId, hiddenStatuses, fleet.dirty])
 
   function progressAt(now) {
     const { at, interval } = batch.current
@@ -91,6 +92,8 @@ export default function TruckLayer({ fleet, selectedId, onSelect }) {
         newBatch = true
       }
       const status = statusOf(telemetry, activeTypes.get(vehicleId))
+      // Filtered out in the legend: not drawn (its segment above stays current, so it reappears in the right place).
+      if (hiddenStatuses.has(status) && vehicleId !== selectedId) continue
       segment.scale = vehicleId === selectedId ? SCALE.selected : status in ANOMALY_TYPES ? SCALE.anomaly : SCALE.normal
       mesh.setColorAt(ids.length, colors[status])
       ids.push(vehicleId)

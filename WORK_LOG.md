@@ -1,217 +1,15 @@
-# 🧾 Work Log: S3 → Airbyte → Snowflake → dbt
+# 🧾 Work Log: Dashboard (backend + frontend)
 
 **Author:** Karim Mohamed
-**Scope:** the batch path, from S3 (Bronze) to Snowflake and dbt.
-Step numbers follow the progress table in [README.md](README.md#6-progress).
+**Scope:** the web dashboard only: the frontend ([dashboard/](dashboard/)) and its backend API ([backend/](backend/)).
+My Snowflake + Airbyte setup (stopped at step 5c, when the team moved to `SUPPLYCHAIN_DW`) is in [PIPELINE_WORK_LOG.md](PIPELINE_WORK_LOG.md).
 
 **How I document each step (team rules from [Notion_Documentation.md](Notion_Documentation.md)):**
 1. Write the step right after I finish it.
 2. Each step = **what I did** (1–3 lines) + **screenshot** + **code** (if any).
 3. Never show passwords, keys or tokens. Use `<YOUR_KEY>` and blur screenshots.
 
-Screenshot naming: `tool-stepnumber-name.png` (for example `snowflake-3a-account.png`).
-
 Status: ✅ done · ⏳ in progress · ⬜ not started
-
----
-
-## Step 3: Snowflake setup ✅
-
-### 3a. Create the Snowflake account ✅
-**What I did:** Signed up at signup.snowflake.com with **Enterprise** edition on **AWS**, in the same region as the S3 bucket (avoids data transfer charges).
-
-| Setting | Value |
-|---|---|
-| Edition | Enterprise |
-| Cloud | AWS |
-| Region | EU (Stockholm) `AWS_EU_NORTH_1`, same as the S3 bucket |
-| Date | 2026-10-26 |
-
-**Screenshot:** `snowflake-3a-account.png`
-
-### 3b. Create the key pairs for the service users ✅
-**What I did:** Created one RSA key pair per service user (`AIRBYTE_USER`, `DBT_USER`). The private key (`.p8`) stays on my PC. The public key (`.pub`) goes into Snowflake. Keys are stored outside the repo in `~/.snowflake_keys/`.
-
-**Code (Git Bash):**
-```bash
-mkdir -p ~/.snowflake_keys && cd ~/.snowflake_keys
-
-# Airbyte user
-openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out airbyte_rsa_key.p8 -nocrypt
-openssl rsa -in airbyte_rsa_key.p8 -pubout -out airbyte_rsa_key.pub
-
-# dbt user
-openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out dbt_rsa_key.p8 -nocrypt
-openssl rsa -in dbt_rsa_key.p8 -pubout -out dbt_rsa_key.pub
-```
-
-**Result:** 4 files: `airbyte_rsa_key.p8`, `airbyte_rsa_key.pub`, `dbt_rsa_key.p8`, `dbt_rsa_key.pub`.
-
-> ⚠️ Never commit or screenshot the `.p8` files. `.gitignore` blocks `*.p8` and `*.pub`.
-
-### 3c. Run the setup script ✅
-**What I did:** Ran [snowflake/01_setup.sql](snowflake/01_setup.sql) as `ACCOUNTADMIN` in a Snowflake worksheet. Placeholders were replaced **in the worksheet only**, not in the repo file.
-
-| Placeholder | Replaced with |
-|---|---|
-| `<PASTE_AIRBYTE_PUBLIC_KEY_HERE>` | Body of `airbyte_rsa_key.pub` (no BEGIN/END lines, no line breaks) |
-| `<PASTE_DBT_PUBLIC_KEY_HERE>` | Body of `dbt_rsa_key.pub` |
-
-> The script grants the 3 roles to my own login automatically with `CURRENT_USER()`, so there is no username to replace.
-
-**Code (print a public key on one line, ready to paste):**
-```bash
-grep -v "PUBLIC KEY" ~/.snowflake_keys/airbyte_rsa_key.pub | tr -d '\n'
-grep -v "PUBLIC KEY" ~/.snowflake_keys/dbt_rsa_key.pub | tr -d '\n'
-```
-
-**What the script creates:**
-
-| Object | Names |
-|---|---|
-| Warehouses (XSMALL, auto-suspend 60 s) | `AIRBYTE_WH`, `DBT_WH`, `BI_WH` |
-| Database | `FLEET_DB` |
-| Schemas | `RAW`, `STAGING`, `INTERMEDIATE`, `MARTS`, `SEEDS` |
-| Roles | `AIRBYTE_ROLE`, `TRANSFORMER`, `REPORTER` |
-| Service users (key pair) | `AIRBYTE_USER`, `DBT_USER` |
-| Cost guard | `FLEET_MONTHLY_RM` (50 credits a month: notify at 75%, suspend at 90% and 100%) |
-
-**Screenshot:** `snowflake-3c-setup-run.png`
-
-### 3d. Verify ✅
-**Code:**
-```sql
-SHOW SCHEMAS IN DATABASE FLEET_DB;
-SHOW USERS LIKE '%_USER';
-SELECT CURRENT_ORGANIZATION_NAME() || '-' || CURRENT_ACCOUNT_NAME() AS account_identifier;
-```
-
-**Result:**
-- Schemas found: `RAW`, `STAGING`, `INTERMEDIATE`, `MARTS`, `SEEDS`
-- `RSA_PUBLIC_KEY_FP` set (starts with `SHA256:`) for `AIRBYTE_USER` and `DBT_USER`
-- Account identifier (needed by Airbyte and dbt): `RSGNWLJ-PK32132` (Snowflake host: `RSGNWLJ-PK32132.snowflakecomputing.com`)
-
-**Screenshot:** `snowflake-3d-verify.png`
-
----
-
-## Step 4: AWS access for Airbyte + bucket survey ✅
-
-### 4a. AWS identity for Airbyte ✅ (my IAM user `Karim`)
-**Permission check (2026-10-26):** my IAM user can read the bucket in the S3 console ✅, but cannot create IAM users ❌ and cannot open CloudShell ❌. The account owner creates this user and its access key (4a + 4b) and sends me the key privately.
-**Decision (2026-10-26): Airbyte uses my IAM user `Karim`.** My user cannot create its own access key (no IAM permissions: `iam:ListAccessKeys`, `iam:GetAccountSummary` and others are denied), so the account owner creates an access key **for user `Karim`** and sends it privately. Trade-off: Airbyte gets all of `Karim`'s permissions, and the pipeline depends on my user. Later option: switch to a dedicated `airbyte-s3-reader`.
-**What the owner does:** In AWS IAM, creates the user `airbyte-s3-reader` (no console access) and attaches an inline policy that can only list and read the bucket `fleet-telematics-lakehouse-team11`.
-
-**Code:** policy [aws/airbyte_s3_readonly_policy.json](aws/airbyte_s3_readonly_policy.json)
-- `s3:ListBucket`, `s3:GetBucketLocation` on the bucket
-- `s3:GetObject` on all objects in the bucket
-
-**Screenshot:** `aws-4a-iam-user.png`
-
-### 4b. Create an access key for Airbyte ✅
-**Result (2026-10-27):** the owner created access key `…LKJI` for user `Karim`. Saved in `~/.aws/credentials`, and `.env` was rebuilt with `bash tools/build_env.sh`. Check: `who am I` = `user/Karim`, bucket region `eu-north-1`, list root OK (`bronze/`, `fleet/`), list `fleet/bronze/tms/trips/` OK.
-**What I did:** IAM → `airbyte-s3-reader` → Security credentials → Create access key ("Application running outside AWS"). Saved the key ID and secret in a safe place (not in the repo).
-
-**Screenshot:** `aws-4b-access-key.png` (blur the key)
-
-### 4c. Run the bucket survey ✅
-**What I did:** Ran [tools/s3_survey.py](tools/s3_survey.py) to list every folder in the bucket (file count, size, first and last file date) and print the first lines of one sample file per folder. This decides the Airbyte stream list.
-
-**Code:**
-```bash
-# one-time: virtual env + dependencies (.venv is git-ignored)
-python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt
-
-# credentials: C:\Users\dev\.aws\credentials (outside the repo, read by boto3)
-.venv/Scripts/python tools/s3_survey.py fleet-telematics-lakehouse-team11 > tools/s3_survey.txt
-```
-
-**Result (2026-10-27):** 583 objects in 18 folder groups (sizes in MB, all small because the generator started on 2026-10-26).
-
-| Folder | Files | Format | Airbyte stream? |
-|---|---|---|---|
-| `fleet/bronze/registry/trucks`, `registry/trailers`, `hr/drivers` | 3 each | CSV.gz (daily snapshot) | Yes |
-| `fleet/bronze/tms/customers`, `facilities`, `routes` | 3 each | CSV.gz (daily snapshot) | Yes |
-| `fleet/bronze/tms/loads`, `trips`, `delivery_events` | 103 each | CSV.gz (every 15 min) | Yes |
-| `fleet/bronze/fuel_card/fuel_purchases` | 89 | CSV.gz | Yes |
-| `fleet/bronze/cmms/maintenance_records` | 44 | CSV.gz | Yes |
-| `fleet/bronze/safety/safety_incidents` | 1 | CSV.gz | Yes |
-| `fleet/bronze/prices/diesel_prices` | 3 | CSV.gz | Yes |
-| `bronze/telemetry.raw/dt=/hour=` | 4 | JSON lines (uncompressed), from Kafka Connect | To decide |
-| `fleet/bronze/weather/open_meteo` | 6 | JSON.gz (one JSON array per file) | To decide |
-| `fleet/ground_truth/gen_anomaly_labels` | 102 | JSONL.gz (evaluation only) | To decide |
-| `fleet/silver/telemetry` | 7 | Parquet (written by Spark, 1 empty folder marker) | No (not Bronze) |
-
-Not found in the bucket: `fleet/bronze/stream_direct/`, `fleet/bronze/prices/eia/`, `bronze/reference/`, and no Kafka Connect folder for reefer.
-
-**Script fixes:** `tools/s3_survey.py` now skips empty (0-byte) objects when picking a sample (S3 returned `InvalidRange`) and writes UTF-8 output (Windows `cp1252` could not encode some characters).
-(`tools/s3_survey.txt` is git-ignored.)
-
----
-
-## Step 5: Airbyte source, destination, connection, first sync ⏳
-
-### 5a. Source: Amazon S3 ✅ (S3 connector v4.16.1)
-**What I did:** In Airbyte Cloud, created the source `fleet-s3-bronze` (Amazon S3, delivery method **Replicate Records**) with a first test stream. After the owner sent a working key (`…LKJI`, user `Karim`), the connection test passed and the source was saved (2026-10-27).
-
-| Field | Value |
-|---|---|
-| Bucket | `fleet-telematics-lakehouse-team11` |
-| Authentication | IAM user access key (user `Karim`) |
-| Stream name | `trips` |
-| Globs | `fleet/bronze/tms/trips/**/*.csv.gz` (default `**` removed) |
-| Format | CSV, header from CSV, inference type **None** (all columns as text) |
-| Validation policy | Emit record |
-
-**Screenshot:** `airbyte-5a-source.png`
-
-### 5b. Destination: Snowflake ✅
-**What I did:** Created the destination `fleet-snowflake-raw` (Snowflake connector v5.2.0) with key-pair authentication.
-
-| Field | Value |
-|---|---|
-| Host | `RSGNWLJ-PK32132.snowflakecomputing.com` |
-| Role / Warehouse | `AIRBYTE_ROLE` / `AIRBYTE_WH` |
-| Database / Default schema | `FLEET_DB` / `RAW` |
-| Username | `AIRBYTE_USER` |
-| Authorization | Key Pair: full `airbyte_rsa_key.p8`, including BEGIN/END lines, no passphrase |
-
-**Code (copy the private key to the clipboard without showing it):**
-```bash
-cat ~/.snowflake_keys/airbyte_rsa_key.p8 | clip
-```
-
-**Test from my PC (same login as Airbyte):** login OK as `AIRBYTE_USER`, `AIRBYTE_ROLE`, `AIRBYTE_WH`, `FLEET_DB.RAW`, region `AWS_EU_NORTH_1`; create and drop a test table in `RAW` OK.
-
-**Screenshot:** `airbyte-5b-destination.png`
-
-### 5c. Connection + streams ✅
-**What I did:** Added 12 more CSV streams to the source (13 in total, same settings as `trips`), then created the connection `fleet-s3-bronze → fleet-snowflake-raw` (2026-10-28).
-
-| Setting | Value | Why |
-|---|---|---|
-| Streams | `trucks`, `trailers`, `drivers`, `customers`, `facilities`, `routes`, `loads`, `trips`, `delivery_events`, `fuel_purchases`, `maintenance_records`, `safety_incidents`, `diesel_prices` | Globs: `<S3 folder>**/*.csv.gz` (see the 4c survey table) |
-| Sync mode | **Incremental \| Append** (all streams) | Reads only new files and keeps every row. No primary key needed. De-duplication happens in dbt (keeps snapshot history and dirty rows) |
-| Destination namespace | Destination default (`RAW`) | Tables land in `FLEET_DB.RAW` |
-| Stream prefix | none | Table names = stream names |
-| Schema changes | Propagate field changes only | New columns are added automatically. All columns are text, so type changes cannot happen |
-| Schedule | Every 1 hour | Airflow takes over later (Step 10) |
-
-Not added yet: `telemetry_raw` (JSONL), weather (JSON array) and anomaly labels (evaluation only). Still to decide.
-
-**Screenshot:** `airbyte-5c-connection.png`
-### 5d. First sync ⬜
-
-## Step 6: Verify RAW (row counts S3 vs Snowflake) ⬜
-
-## Step 7: dbt project + connection ⬜
-
-## Step 8: dbt staging models + tests ⬜
-
-## Step 9: dbt intermediate + marts + seeds ⬜
-
-## Step 10: Airflow DAG (Airbyte → dbt run → dbt test) ⬜
 
 ---
 
@@ -228,14 +26,9 @@ Not added yet: `telemetry_raw` (JSONL), weather (JSON array) and anomaly labels 
 
 **Tests done:** `vite build` passes. A headless check confirmed that all 8 dashboards return their KPIs and series, the simulator emits 5,000 telemetry plus about 2,500 reefer rows per tick, and all 4 anomaly types appear (about 50 active at once). The dev server serves all pages. Not yet checked: visual check in a browser.
 
-**Still open:**
-- Thresholds to confirm with the team (labelled as assumptions in the UI): speeding > 70 mph, excessive idling > 30 min, severe delay > 120 min, route deviation > 5 mi.
-- Backend: implement `GET /kpis/{dashboard}` from MARTS and the SSE stream, both following [dashboard/src/data/contract.js](dashboard/src/data/contract.js).
-- The `series` key names are proposals for the MARTS tables. Rename them together with dbt.
-
 ---
 
-## Backend API (FastAPI → Snowflake) ⏳
+## Backend API (FastAPI → Snowflake + Kafka) ✅
 **What I did (2026-10-28):** Built [backend/](backend/): FastAPI that logs in to Snowflake with username + password from `backend/.env` and answers `GET /health` (who am I in Snowflake) and `GET /api/tables` (tables and views the user can see, with row counts). Details and run steps: [backend/README.md](backend/README.md).
 The Snowflake it will query is a **second account owned by a teammate** (not `RSGNWLJ-PK32132`). The owner sends account identifier, user, password, database (and optionally role, warehouse, schema); they go into `backend/.env` only.
 
@@ -319,11 +112,6 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 
 **Tests done:** responses of `/health`, `/api/tables`, `/api/kpis/validation` saved before the change and compared after: byte-for-byte identical (149 / 2,827 / 597 bytes) ✅ · SQL in the `.sql` files equals the old Python strings ✅ · `/docs` lists the same 3 paths plus 4 schemas ✅ · CORS preflight 200 ✅ · no warnings at startup ✅ · service with a fake repository returns both KPI models ✅ · Snowflake error → 503 ✅ · `tools/validate_marts.py` import works ✅. The server on port 8000 still runs the old code until restarted.
 
-**Still open:**
-- Answers from the owner to the 4 questions in [MARTS_VALIDATION_REPORT.md](MARTS_VALIDATION_REPORT.md#4-questions-for-the-model-owner).
-- ~~`GET /api/kpis/{dashboard}` per [dashboard/src/data/contract.js](dashboard/src/data/contract.js)~~ done, see the next ticket.
-- ~~SSE stream (`VITE_STREAM_URL`) belongs to the streaming team.~~ done, see "Live stream from Kafka over SSE".
-
 ### Warehouse KPIs on the dashboard + 30-min refresh ✅ (2026-10-29)
 **What I did:** Added `GET /api/kpis/{dashboard_id}?kpi_ids=…`. It calculates every KPI card and chart that the warehouse can answer, for the last 30 days vs the previous 30 days, directly on `DBT_MARTS`. 23 KPIs + 17 charts. KPIs and charts that need the live stream or pipeline metadata return `null`. The dashboard calls it and re-fetches every 30 min. Units switched to metric everywhere (api and mock; the mock was removed on 2026-10-29).
 
@@ -358,7 +146,7 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 | 26 Revenue per km (USD/km) | 1.451 | 1.452 | |
 | 27 Fuel Cost % of Revenue (%) | 23.79 | 24.30 | = KPI 20 / KPI 26 (checked) |
 | 28 Margin Proxy per Trip (USD) | 3,094.53 | 3,117.40 | Revenue − fuel − maintenance, not profit |
-| 30 Km per Truck per Day (km) | 538.1 | 561.3 | ⚠️ see "Still open" (incomplete last days) |
+| 30 Km per Truck per Day (km) | 538.1 | 561.3 | ⚠️ incomplete last days, fixed in the "Follow-up" below |
 | 36 Incident Rate (per 1M km) | 0.756 | 0.689 | = ~1.2 per 1M mi, near the expected 1.4 |
 | 38 Claim Cost (USD) | 423,420 | 564,630 | |
 | 41 Total Maintenance Cost (USD) | 6,175,651 | 6,157,836 | |
@@ -377,13 +165,6 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 
 **Tests done:** all 23 KPI SQL and 17 chart SQL run on Snowflake (4.5 s and 9.5 s for all) ✅ · endpoint on a test instance (port 8001) for all 8 dashboards, 1–4 s each ✅ · unknown id → 404 ✅ · JSON numbers are floats, dates `YYYY-MM-DD` ✅ · KPI 27 = KPI 20 / KPI 26 ✅ · found and fixed a Snowflake precision bug (KPI 36 gave exactly 1.0: a division keeps 6 decimals, so multiply by 1,000,000 first) ✅ · `npm run build` passes ✅. Not done: clicking through the pages in a browser in api mode.
 
-**Still open:**
-- ~~The 3-day lag is not enough~~ fixed, see "Follow-up" below.
-- Repeated SQL to move into dbt later: the period fuel price (KPIs 20, 27, 28 + 2 charts) and the diesel reference (KPI 22 + 2 charts).
-- `worst_customers` leaves out customers with fewer than 10 deliveries (assumption).
-- ~~Server on port 8000 old + expired login; connection not reopened on expiry~~ fixed, see "Follow-up" below.
-- `DIESEL_PRICES` into the marts (dbt owner), then KPI 22 reads the mart.
-
 **Follow-up (2026-10-29): trips by finish day, window ends yesterday, reconnect on expired login, backend restarted**
 - **Problem:** trips counted on their start day (`TRIP_DATE`). A trip lands only when completed (59 h on average, up to 5 days), so the last start days were incomplete (24 Oct 934 trips, 25 Oct 692, 26 Oct 371) and trip totals were ~3–4% low.
 - **Fix:** trips count on the day they finished (`ARRIVAL_TS::DATE`). By finish day every day is complete (22–28 Oct: 857–951 trips). 15 SQL files changed (`trip_date` → `arrival_ts::DATE`): KPIs 8, 20, 21, 24, 26, 27, 28, 30, 36, 44 and charts `unit_economics_trend`, `fuel_efficiency_by_route`, `fuel_efficiency_by_truck`, `driver_scorecard`, `cost_by_model_year`. Window now ends yesterday (`DATA_LAG_DAYS = 1`).
@@ -391,7 +172,6 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 - **Connection fix:** `snowflake_client.fetch_all()` catches an expired login (`ReauthenticationRequest`, or codes 390111 / 390112 / 390114), opens a new connection and retries once. Tests: simulated expiry → 2 attempts, new session ✅ · real end of our session (`SYSTEM$ABORT_SESSION`, gave 390111) → next query works on a new session ✅ · a normal SQL error (2003, unknown table) is still raised, no retry ✅.
 - **Backend restarted** on port 8000 with `--reload`, as a separate Windows process (survives the terminal). Logs: `backend/uvicorn.log`, `backend/uvicorn.err.log` (added to `.gitignore`), PID in `backend/uvicorn.pid`. `/health` 200, all dashboards 200 in 0.2–1.6 s ✅.
 - **Files:** `backend/app/infrastructure/snowflake_client.py`, `backend/app/services/kpi_service.py`, the 15 SQL files above, `backend/README.md`, `backend/ARCHITECTURE.md`, `.gitignore`.
-- ⚠️ **Still open:** yesterday is not fully loaded yet at midday (28 Oct at 12:30 EST: delivery events 690 of ~920, fuel purchases 1,281 of ~1,800, maintenance 50 of ~110). Sums of these tables (KPIs 19, 38, 41, 42, 43, and the incident count in 36) are ~1–2% low until the day completes. Pickup events have the same issue as trips had (saved only when the trip finishes): KPI 2 and 7 are rates/averages, so the effect is small.
 
 ### Live stream from Kafka over SSE ✅ (2026-10-29)
 **What I did:** The backend reads the two Kafka silver topics, keeps the latest row of every truck in memory, makes alerts from the row flags, calculates the live KPIs, and pushes all of it to the dashboard over Server-Sent Events (`GET /api/stream`). The live map in api mode now uses this instead of the simulator, and shows a new "Live KPIs" panel. Details: [backend/README.md](backend/README.md#live-stream-get-apistream), [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md#live-stream-files-get-apistream).
@@ -431,16 +211,6 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 - Kafka down (first version had a bug: topic "not found") → the reader logged it and retried every 10 s, the API kept answering ✅. Bug fixed (topics passed to the consumer, aiokafka assigns all 6 partitions).
 - `npm run build` passes ✅. Not done: clicking through the live map in a browser.
 
-**Still open:**
-- **Server on port 8000 restarted** (2026-10-29) as a separate process with `--reload --timeout-graceful-shutdown 3` (logs `backend/uvicorn.log`, `backend/uvicorn.err.log`, PID in `backend/uvicorn.pid`). Before the flag, an open dashboard tab (SSE) blocked every reload forever. With it, a reload finishes in 18–55 s ✅.
-- ⚠️ **After a `--reload`, an open live-map tab freezes:** on Windows the old connection is not closed (tested: the SSE client stayed connected and got no more data), so `EventSource` does not reconnect. Refresh the page after a backend reload. Only in dev with `--reload`; a real stop/start closes the connection. Possible fix (not decided): the backend sends `kpis` every ~30 s even without changes, and the frontend reconnects when nothing arrived for ~90 s.
-- Snapshot is ~4 MB per new viewer (all columns, 5,000 trucks). Fine on localhost; for remote viewers: send only the columns the dashboard uses, or gzip.
-- An open tab keeps a truck on the map after the backend dropped it (no "removed" event); its alerts do end. A reload of the page is clean.
-- After an `EventSource` reconnect the old alerts stay in the browser; ended alerts that are no longer in the last 40 can stay "active" until the page reloads.
-- 133 `EXCESSIVE_IDLING` of 242 idling trucks looks high: compare with `gen_anomaly_labels` (KPIs 51–53) later.
-- Ask the owner: `retention.ms` of the two topics (must be ≥ 60 min), and whether the 5-min batch can be faster.
-- `Notion_Data_Catalog.md` still says "Kafka is not used" and lists the old topic names.
-
 ### Mock data removed ✅ (2026-10-29)
 **What I did:** Deleted the dashboard's mock data source (fake KPI numbers, fake chart series, in-browser 5,000-truck simulator) and the `VITE_DATA_SOURCE` switch. The dashboard now always reads the backend: warehouse KPIs over REST, live stream over SSE.
 
@@ -459,10 +229,8 @@ The Snowflake it will query is a **second account owned by a teammate** (not `RS
 
 **Tests done:** `npm run build` passes ✅ · no `mock` / `VITE_DATA_SOURCE` reference left in `dashboard/src` ✅. Not done: clicking through the pages in a browser.
 
-**Still open:** without the backend running, every page shows the error box and the live map stays "Waiting for the stream…" (no offline mode any more).
-
-### Stream KPIs + moving trucks from Kafka ⏳ (step 1 of 3 ✅, 2026-10-29)
-Plan and decisions: [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). Step 1 = backend KPIs + charts ✅ · step 2 = pages show them ⬜ · step 3 = trucks replay by `event_ts` ⬜.
+### Stream KPIs + moving trucks from Kafka ⏳ (steps 1 and 2 of 3 ✅, 2026-10-29)
+Plan and decisions: [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). Step 1 = backend KPIs + charts ✅ · step 2 = pages show them ✅ (see "Dashboard pages show the stream KPIs" below) · step 3 = trucks replay by `event_ts` ⬜.
 
 **What I did (step 1):** Every KPI and chart that needs telemetry / reefer data is now calculated **from Kafka** (not the warehouse, which has no stream table, so they were `null`). The backend keeps every Kafka row (only the columns the KPIs read), calculates KPIs 10, 11, 12, 13, 14, 15, 16, 23, 29, 33, 34 and the charts `trip_temperature`, `excursions_by_trailer`, `excursion_rate_by_ambient`, `high_risk_trips`, `time_in_state` once per Kafka batch, and sends them in a new SSE event `stream_kpis` on `GET /api/stream`. New filter `?events=stream_kpis` so pages without the map get ~1 KB instead of ~4 MB.
 
@@ -482,11 +250,6 @@ Plan and decisions: [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). Step 1 = backend
 - Fake rows, values worked out by hand: **36 checks, all pass ✅** (minutes per row + 15-min cap · excursions: 1 row = none, null temp inside a run · KPIs 10–16, 23, 29, 33, 34 + previous window · window edges · all 5 charts · empty data → null · run at the first kept row skipped · history dedup / too old / expiry / columns · `stream_kpis` in snapshot and changes, still sent after a snapshot, not sent for a duplicate). Script: scratchpad `test_stream_kpis.py` (not in the repo).
 - Real Kafka (2026-10-29 ~13:10 UTC, window to 13:00 UTC): 100,267 messages read, 99,827 rows kept = **42 MB**, `calculate()` **0.65–0.85 s**, event **0.9 KB**. Values (now vs previous): KPI 10 99.9 / 100.0 % · 11 100.0 / 99.9 % · 12 0 / 1 · 13 – / 85.0 min · 14 – / 6.2 °F · 15 0.1 / 0.1 % · 16 3.0 / 2.5 min per trailer · 23 1,209.7 / 1,232.8 L · 29 34.6 / 34.1 % · 33 0.08 / 0.08 per 100 km · 34 71 / 64.
 - Running backend (port 8000, after reload) ✅: `?events=stream_kpis` → only `stream_kpis` (989 bytes); no filter → all 5 events (3.9 MB snapshot); `?events=nope` → 422.
-
-**Still open:**
-- Steps 2 (pages) and 3 (replay) of the plan.
-- `calculate()` runs on the event loop (~0.8 s once per 5-min batch): sends to viewers wait that long. Fine now; move to a thread if the batch gets faster.
-- `time_in_state` has only `DRIVING` / `IDLING` / `PARKED` (no loading/unloading or maintenance in Kafka).
 
 ### KPIs without a data source removed ✅ (2026-10-29)
 **What I did:** With the mock gone, every KPI card, chart and chart column that neither the warehouse (`DBT_MARTS`) nor Kafka can fill was removed from the dashboard, with its definition (also gone from the KPI Guide).
@@ -508,8 +271,6 @@ Plan and decisions: [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). Step 1 = backend
 - **`.env` changes:** none. No database change.
 
 **Tests done:** `npm run build` passes ✅ · every page's `kpiIds` exists in `KPIS` ✅ · no reference left to the removed KPIs / series / columns in `dashboard/src` ✅ · backend: `/api/kpis/live` → 404 ✅, `/api/kpis/platform` → 200 with `series: {}` ✅, `driver_scorecard` columns = `driver_id, first_name, last_name, distance_km, kpi_24, incidents` ✅, `service_trend` = `week_start, kpi_1` ✅.
-
-**Still open:** build KPIs 54, 57, 58, 60 (design to agree first). `Notion_Data_Catalog.md` still lists all 64 catalog KPIs (it is the original catalog, not changed).
 
 ### Platform KPIs 54, 57, 58, 60 (stream) + 65 (warehouse) ✅ backend (2026-10-29)
 **What I did:** Built the 4 platform KPIs that have a source, and a new KPI 65.
@@ -536,17 +297,56 @@ Plan and decisions: [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). Step 1 = backend
 - Fake messages, values by hand: **51 checks, all pass ✅** (the 36 before, plus: re-read skipped · lower offset with newer Kafka time = new · duplicate → only `stream_kpis` · not JSON / no `vehicle_id` raise and are counted · refresh after 1 min, not after 30 s · KPI 54 = 10 / 60 s, 57 = 1 of 10, 58 = 2 of 10 and 1 of 4, 60 = 2 min).
 - Running backend (2026-10-29 13:45 UTC): 54 = **11.17** events/s (prev 11.12) · 57 = **0.4 %** (prev 0.43) · 58 = **0.0 %** · 60 = **0.1 min** · 65 (REST) = **52.6 min** · `npm run build` ✅.
 
-**Still open:** the Platform page (and the other pages) do not read `stream_kpis` yet, so 54, 57, 58, 60 show `-` on screen until step 2 of [STREAM_KPIS_PLAN.md](STREAM_KPIS_PLAN.md). KPI 65 shows now.
+### Live page: changed values light up for 2 s ✅ (2026-10-29)
+**What I did:** On the Live Fleet Map, a value that changes because of new stream data lights up (sky-blue border + background) for 2 s: a **Live KPI tile** when its number changes, an **alert feed row** when the alert is new or ends. Scope chosen by the owner: live page only, each changed value (no header badge).
 
-## 📌 Open items (later)
-- **Team access:** teammates need Snowflake, Airbyte and dbt access. Plan: a personal Snowflake user each (`snowflake/02_team_users.sql`), Airbyte workspace invites, and their own `profiles.yml`. Still to decide: access level (project roles + `SYSADMIN`, or `ACCOUNTADMIN`), usernames and emails.
+**Logic:** `hooks/useHighlight.js` `useHighlight(value, lightFirst)` keeps the previous value in a ref; when the value changes it sets `lit` = true, and a second effect turns it off after `HIGHLIGHT_MS` (2,000 ms); a new change while lit restarts the 2 s. The first value does not light (page load) unless `lightFirst`. `LiveKpiTile` uses it with the tile's value; `AlertFeedRow` uses it with `end_ts` and `lightFirst` = the alert arrived after the snapshot. `useFleetState` marks those alerts **when the message arrives** (`snapshotDone` becomes true at the first `kpis` event, the last event of the snapshot; `newAlertIds` keeps the last 40 ids after it).
 
----
+**Bug found in the browser test (and fixed):** the first version used `liveKpis !== null` to know the snapshot was over, and all 40 alert rows lit on page load: React draws the whole snapshot at once, after the `kpis` event was already handled. Marking alerts at message time does not depend on when React draws.
 
-## 🐞 Error log
-| Date | Step | Error | Fix |
-|---|---|---|---|
-| 2026-10-26 | 3c | `New public key rejected by current policy. Reason: 'Invalid Public key'` on `CREATE USER AIRBYTE_USER` | The placeholder `<PASTE_AIRBYTE_PUBLIC_KEY_HERE>` was not replaced. Create the keys (3b), paste the real public key body, and re-run from section 7 |
-| 2026-10-26 | 4a | CloudShell: `Unable to create the environment ... insufficient permissions` | My IAM user has no CloudShell or IAM permissions. Do the checks in the console instead. The AWS account owner creates `airbyte-s3-reader` |
-| 2026-10-26 | 5a | Airbyte S3 source: `Error listing files`. Local check: `SignatureDoesNotMatch` on every call | The key from the generator `.env` (`…CTEG`) has a secret that does not match its key ID (my copy was checked and is identical to what I received). It was also shared in chat. Owner deletes it and creates `airbyte-s3-reader` with a fresh key. Also removed the default `**` glob from the stream |
-| 2026-10-26 | 5b | Airbyte Snowflake destination: `HikariPool-1 - Connection is not available, request timed out after 30000ms` | The Snowflake login worked from my PC, so the form was wrong: the private key must be pasted in full (with the BEGIN/END lines, no quotes from `.env`) and the host without `https://`. Copied it with `cat ~/.snowflake_keys/airbyte_rsa_key.p8 \| clip` |
+**Files:** new `dashboard/src/hooks/useHighlight.js`; changed `src/hooks/useFleetState.js` (`snapshotDone`, `newAlertIds`), `src/pages/LiveMapPage.jsx` (`LiveKpiTile`, `AlertFeedRow`, `LIT` classes), `dashboard/README.md`. **`.env` changes:** none. No database change.
+
+**Tests done:** `npm run build` ✅ · headless Edge on the real stream (3 runs, 2026-10-29 14:09–14:15 UTC), lit elements sampled every 0.5 s: page load and reload → 0 lit ✅ (first version: 40 rows, the bug) · reefer rows expiring → "Reefers reporting" + "Data age" lit ✅ · Kafka batch 14:14:55 → 4 then 5 tiles and 2 then 30 new alert rows lit ✅ · every lit period lasted **2.1 s** ✅.
+
+### Dashboard pages show the stream KPIs (step 2) ✅ (2026-10-29)
+**What I did:** Every dashboard page now listens to the `stream_kpis` SSE event and shows its values in the KPI cards and charts that the warehouse returns as `null`: KPIs 10–16, 23, 29, 33, 34 (Kafka rows), 54, 57, 58, 60 (Kafka messages) and the 5 stream charts. Pages without the map ask the backend only for `stream_kpis` (`?events=`), ~3 KB instead of ~4 MB.
+
+**Decisions (owner):**
+- Merge in `DashboardShell` (one place, pages unchanged, no list of stream KPI ids in the frontend): a KPI id or series key the stream sends replaces the warehouse one.
+- `apiSource` opens the shared `EventSource` with `?events=` of the subscribed event types and reconnects when they change.
+- The header shows a 2nd period line "Live (Kafka): 60 min to 18:15 vs previous 60 min", only on pages with a stream card or chart (not a tag per card).
+- No new `useStreamKpis` hook (plan): `useStream('stream_kpis', setStream)` is one line.
+
+**Logic:** `DashboardShell` → `useKpis(id)` (REST, 30 min) + `useStream('stream_kpis', setStream)` → `mergeStream(data, stream)`: stream KPIs replace the REST row with the same `kpi_id`, `{ ...data.series, ...stream.series }` → `KpiGrid` + `children(series)`. Before the first `stream_kpis`, the REST data is shown as it is. `apiSource.subscribe()` adds `{ eventType, listener }` to `subscriptions` and calls `scheduleReconnect()`: one microtask later (after the whole React commit) it closes the old `EventSource` and opens `VITE_STREAM_URL?events=<subscribed types>`, so a page change = one new connection with its own snapshot. `unsubscribe` removes the listener at once. `pagehide` closes the connection, `pageshow` from the back/forward cache reconnects.
+
+**Bug found in the browser test (and fixed):** after ~3–5 full page loads (reload / typed URL) every request to the backend hung, even `/health`. Cause: the browser keeps left pages in its back/forward cache with their SSE connection open, and allows only 6 connections per host (`netstat`: the test Edge held exactly 6 to `:8000`; with `--disable-features=BackForwardCache` the problem was gone). Before this step only the live map had a connection; now every page has one, so it showed up. Fix: close on `pagehide`. Also fixed before the test: the header check read `stream.series` while `stream` was still `null` (crash before the first event); the Cold Chain chart title showed "null" (Kafka has no `trip_id`) → now `trailer_id (vehicle_id, commodity)`.
+
+**Files:** `dashboard/src/components/DashboardShell.jsx` (merge, `useStream`, 2nd period line), `src/data/api/apiSource.js` (`subscriptions`, `scheduleReconnect`, `?events=`, `pagehide`/`pageshow`), `src/pages/ColdChainPage.jsx` (title, comment), `src/hooks/useStream.js` (comment), `dashboard/README.md` (sections 2, 3, 6, 7, 8, 13), `STREAM_KPIS_PLAN.md` (step 2 rows), this log. **`.env` changes:** none. No database change. No backend change.
+
+**Tests done:**
+- `npm run build` ✅.
+- `apiSource.js` bundled with Vite and run in Node against the running backend: **9 checks pass ✅** (1 subscriber → 1 connection `?events=stream_kpis` · snapshot received · page change with 5 subscribers → exactly 1 new connection, old one closed, URL has the 5 events · map snapshot received · old handler not called again · all unsubscribed → closed).
+- `mergeStream` with real REST + stream data, 6 pages ✅: every card filled (e.g. cold chain 11 = 99.7 %, 12 = 3, 13 = 11.7 min; platform 54 = 11.16 events/s, 60 = 1.5 min), no series left `null`, no duplicate `kpi_id`, live period line on cold chain / executive / safety / fuel / platform and not on delivery.
+- Headless Edge on the dev server (2026-10-29 ~18:10–18:20 Cairo): 11 sidebar page changes incl. the live map → all cards filled, live line where expected, backend always answering, 0 connections left ✅ · 9 full page loads after the `pagehide` fix → all fine ✅ (before the fix: stuck from the 4th) · Back button → page back with data ✅ (in headless Edge the page reloaded instead of coming from the cache, so the `pageshow` reconnect branch was not exercised).
+
+**Still open:**
+- KPI 60 (and 65) have no previous value → the card says "no change vs previous" (misleading for a "now" value).
+- High-risk trips table keeps a `trip_id` column that is always `-` (Kafka has no `trip_id`).
+- The live page also gets `stream_kpis` (DashboardShell subscribes on every page), ~3 KB per batch, not shown there.
+
+### Live map: facilities, clickable legend, parked split ✅ (2026-10-29)
+**What I did:** The live map now shows the **50 facilities** as small buildings, its area comes from the warehouse locations, `PARKED` trucks are split into "at facility" and "resting on route", and the legend is clickable (hide / show trucks by status). The Delivery page lane map got the same clickable filters (on-time band, origin city). Trucks are drawn bigger. Details: [dashboard/README.md](dashboard/README.md).
+
+**Logic:**
+- **Facilities + map area:** [tools/export_map_data.py](tools/export_map_data.py) reads `DIM_FACILITY` + `DIM_LOCATION` once and writes `dashboard/src/data/facilities.js` (`FACILITIES`, `MAP_BOUNDS` = min/max lat/lon of all locations and facilities). No backend call; run the script again only when facilities change. `projection.js` centers the map on `MAP_BOUNDS` + 1° padding (before: fixed center 38°N, 96°W). `FacilityLayer.jsx` draws each facility as 2 boxes (hall + office); hover shows name, type, city, state.
+- **Parked split:** `statusOf()` in `useFleetState.js`: a `PARKED` truck within **10 mi** of the nearest facility = `PARKED_AT_FACILITY` (loading / waiting), farther = `RESTING_ON_ROUTE` (the driver's 10-hour rest). The distance is cached per row, so re-renders do not repeat the 50-facility search.
+- **Clickable legend:** `FilterChips.jsx` = one chip per item (color, label, count) + Show all / Hide all, returns a new `Set` of hidden keys. Live map: `TruckLayer` skips trucks whose status is hidden (the selected truck is always drawn). Delivery: a lane is drawn only if its on-time band **and** its `origin_city` are shown ("Showing N of M lanes").
+- **Truck size:** `TRUCK_LENGTH` 0.25 → 1 scene unit, `HEIGHT` 0.1 → 0.4, so the model reads when zoomed in.
+- `MARKER_COLOR` moved to `MapCanvas.jsx` and is shared by the Delivery cities and the facility halls (was `CITY_COLOR` in `RouteArcs.jsx`).
+
+**Files:**
+- New: `tools/export_map_data.py`, `dashboard/src/data/facilities.js` (generated), `src/scene/FacilityLayer.jsx`, `src/components/FilterChips.jsx`.
+- Changed: `src/hooks/useFleetState.js` (`MOTION_STATUS_LABEL`, `PARKED_AT_FACILITY` / `RESTING_ON_ROUTE`), `src/pages/LiveMapPage.jsx` (facilities, hover box, legend chips under the map), `src/pages/DeliveryPage.jsx` (lane filters, `LaneHoverBox`), `src/scene/TruckLayer.jsx` (`hiddenStatuses`, size), `src/scene/projection.js` (`MAP_AREA`), `src/scene/MapCanvas.jsx` (`MARKER_COLOR`), `src/scene/RouteArcs.jsx`, `dashboard/README.md`.
+- **`.env` changes:** none. No database change (read-only). No backend change.
+
+**Tests done:** `npm run build` passes ✅.

@@ -2,10 +2,10 @@ import { Line } from '@react-three/drei'
 import { useMemo } from 'react'
 import * as THREE from 'three'
 import { useTheme } from '../hooks/useTheme'
+import { MARKER_COLOR } from './MapCanvas'
 import { MAP_SCALE, project } from './projection'
 
 const SEGMENTS = 32
-const CITY_COLOR = { light: '#334155', dark: '#e2e8f0' }
 
 // One arc per lane (rows need origin_/destination_ latitude + longitude).
 // heightOf(lane) (in degrees, scaled like the map) and colorOf(lane) decide what the arc encodes;
@@ -46,7 +46,7 @@ export default function RouteArcs({ lanes, heightOf, colorOf, onHover }) {
       {cities.map(([city, position]) => (
         <mesh key={city} position={position}>
           <sphereGeometry args={[0.2 * MAP_SCALE, 12, 12]} />
-          <meshStandardMaterial color={CITY_COLOR[theme]} />
+          <meshStandardMaterial color={MARKER_COLOR[theme]} />
         </mesh>
       ))}
     </group>
