@@ -1,0 +1,54 @@
+0. Switch to the admin role
+
+USE ROLE ACCOUNTADMIN: runs everything as the top admin, because only the admin can create users, roles and the cost monitor.
+1. Create 3 warehouses (compute power that runs queries and costs credits)
+
+AIRBYTE_WH is used by Airbyte when it loads data.
+DBT_WH is used by dbt when it transforms data.
+BI_WH is used by Power BI when it reads data.
+Each one is XSMALL (the cheapest size), stops after 60 seconds idle and starts automatically when needed.
+2. Create the database and 5 schemas (folders for tables)
+
+FLEET_DB: the database.
+RAW: data copied from S3 by Airbyte, unchanged.
+STAGING: cleaned data (dbt).
+INTERMEDIATE: joined data (dbt).
+MARTS: final tables for Power BI (dbt).
+SEEDS: small reference CSVs (dbt).
+3. Create 3 roles (permission groups)
+
+AIRBYTE_ROLE can write into RAW.
+TRANSFORMER (dbt) reads RAW and builds the other layers.
+REPORTER (Power BI) can read MARTS only.
+All 3 are attached under SYSADMIN, so the admin can still manage them.
+4. Give Airbyte its permissions
+
+Use AIRBYTE_WH.
+Make RAW its own schema (it owns it).
+Create schemas in FLEET_DB, because Airbyte makes its own helper schema, AIRBYTE_INTERNAL.
+5. Give dbt its permissions
+
+Use DBT_WH.
+Read every table in RAW, including tables Airbyte creates in the future.
+Own STAGING, INTERMEDIATE, MARTS and SEEDS.
+6. Give Power BI its permissions
+
+Use BI_WH.
+Read MARTS only, including future tables.
+7. Create 2 service users (logins for tools, not people)
+
+AIRBYTE_USER logs in with your Airbyte public key and gets AIRBYTE_ROLE.
+DBT_USER logs in with your dbt public key and gets TRANSFORMER.
+TYPE = SERVICE means no password: they can only log in with the matching private key (.p8) on your PC.
+Your own login also gets all 3 roles (found automatically with CURRENT_USER()), so you can test as each one.
+8. Add a cost guard (resource monitor FLEET_MONTHLY_RM)
+
+Limit: 50 credits per month (a credit is Snowflake's billing unit; XSMALL uses 1 credit per hour of running).
+At 75% (37.5 credits) it emails a warning.
+At 90% (45 credits) it suspends the warehouses after running queries finish.
+At 100% (50 credits) it suspends them immediately.
+It's attached to all 3 warehouses.
+9. Check the result
+
+Shows the schemas, the grants of the Airbyte and dbt roles, and the details of AIRBYTE_USER.
+The last line prints your account identifier (for example ORGNAME-ACCOUNTNAME), which Airbyte and dbt need to connect.

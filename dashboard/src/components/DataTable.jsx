@@ -1,0 +1,33 @@
+import { columnLabel } from '../kpis/definitions'
+
+const display = (value) => (value == null ? '-' : typeof value === 'number' ? value.toLocaleString('en-US') : String(value))
+
+// columns: [{ key, label?, format?(value, row) }]. label defaults to KPI name + unit for kpi_<id> keys.
+export default function DataTable({ columns, rows }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-xs">
+        <thead>
+          <tr className="border-b border-slate-800 text-slate-400">
+            {columns.map((column) => (
+              <th key={column.key} className="px-2 py-2 font-medium">
+                {column.label ?? columnLabel(column.key)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index} className="border-b border-slate-800/60 text-slate-300 hover:bg-slate-800/40">
+              {columns.map((column) => (
+                <td key={column.key} className="whitespace-nowrap px-2 py-1.5">
+                  {column.format ? column.format(row[column.key], row) : display(row[column.key])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

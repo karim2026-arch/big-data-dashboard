@@ -108,11 +108,12 @@ CREATE USER IF NOT EXISTS DBT_USER
   RSA_PUBLIC_KEY = '<PASTE_DBT_PUBLIC_KEY_HERE>';
 GRANT ROLE TRANSFORMER TO USER DBT_USER;
 
--- Let your own (human) user act as every role while developing
--- Replace <YOUR_SNOWFLAKE_USERNAME>.
-GRANT ROLE AIRBYTE_ROLE TO USER <YOUR_SNOWFLAKE_USERNAME>;
-GRANT ROLE TRANSFORMER  TO USER <YOUR_SNOWFLAKE_USERNAME>;
-GRANT ROLE REPORTER     TO USER <YOUR_SNOWFLAKE_USERNAME>;
+-- Let your own (human) user act as every role while developing.
+-- Uses the logged-in user, so no name to replace (quoted: works for any login name).
+SET my_user = '"' || CURRENT_USER() || '"';
+GRANT ROLE AIRBYTE_ROLE TO USER IDENTIFIER($my_user);
+GRANT ROLE TRANSFORMER  TO USER IDENTIFIER($my_user);
+GRANT ROLE REPORTER     TO USER IDENTIFIER($my_user);
 
 -- ---------------------------------------------------------------------
 -- 8. Cost guard: suspend warehouses after the monthly credit quota.

@@ -36,3 +36,9 @@ dont over-engineer the solutions (think in the solutions also), see all solution
 make sure the code is simplified and in the correct implementation use cases of it 
 
 
+always any feature i said to you to add illustrate and explain deeply how its done and if it is large make markdown for it and check i have reviewed it and understanded how you have done it i want no any code i dont understand or know how it was doing and why we do it make me invovled with each step you do and tell me it and each new line of code explain it and how it works (do all that after check if i want that for that task , then do it in background task so we can do following point  )
+
+
+any task make sure to explain to me in details how you have done it (not include the discussions or planning)
+
+for planning i always want the reasoning 

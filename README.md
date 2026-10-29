@@ -139,7 +139,10 @@ The stream list is finalized from a bucket survey: [tools/s3_survey.py](tools/s3
 ├── snowflake/
 │   └── 01_setup.sql               # warehouses, DB, schemas, roles, users, monitor
 ├── tools/
-│   └── s3_survey.py               # lists S3 folders and samples file headers
+│   ├── s3_survey.py               # lists S3 folders and samples file headers
+│   └── validate_marts.py          # checks DBT_MARTS keys: orphans, duplicates, one current row (PASS/WARN/FAIL)
+├── dashboard/                     # React web dashboard (mock data now, API later)
+├── backend/                       # FastAPI in front of Snowflake (see backend/README.md)
 └── dbt/                           # (coming in Step 6)
 ```
 
@@ -151,27 +154,27 @@ The stream list is finalized from a bucket survey: [tools/s3_survey.py](tools/s3
 |---|---|---|
 | 1 | EC2 + Python + Kafka on the generator server | ✅ Done (see Notion Documentation 2.1–2.3) |
 | 2 | S3 bucket + EC2 IAM role | ✅ Done |
-| 3 | Snowflake setup (`01_setup.sql`) | ⏳ In progress |
-| 4 | Read-only IAM user for Airbyte + bucket survey | ⏳ In progress |
+| 3 | Snowflake setup (`01_setup.sql`) | ✅ Done (2026-10-26) |
+| 4 | AWS access for Airbyte + bucket survey | ✅ Done (2026-10-27, uses IAM user `Karim`) |
 | 5 | Airbyte source (S3), destination (Snowflake), connection, first sync | ⬜ |
 | 6 | Verify RAW: row counts S3 vs Snowflake | ⬜ |
 | 7 | dbt project + connection | ⬜ |
 | 8 | dbt staging models + tests | ⬜ |
 | 9 | dbt intermediate + marts + seeds | ⬜ |
 | 10 | Airflow DAG (Airbyte → dbt run → dbt test) | ⬜ |
-| 11 | Spark Structured Streaming + backend + live dashboard | ⬜ (streaming team) |
+| 11 | Spark Structured Streaming + backend + live dashboard | ⏳ Backend API: Snowflake connection, `/health`, `/api/tables` done (2026-10-28). KPI endpoint and stream open |
 | 12 | Power BI dashboards | ⬜ |
 
 ---
 
 ## 7. Open questions
 
-1. **Which bucket and region?** The Notion documentation says `supply-chain-graduation-project` in `us-east-1`, but the current config says `fleet-telematics-lakehouse-team11` in `eu-north-1`. Confirm which one is live, and update the generator's `.env` and the Notion page.
-2. **`safety` and `fuel_card`** are missing from `S3_SOURCES`, but the catalog defines `safety_incidents` and `fuel_purchases`. Are they being written?
+1. ✅ **Resolved (2026-10-26): bucket and region.** The live bucket is `fleet-telematics-lakehouse-team11` in `eu-north-1`. Snowflake is in the same region (`AWS_EU_NORTH_1`). Still to do: update the Notion page, which says `supply-chain-graduation-project` / `us-east-1`.
+2. ✅ **Resolved (2026-10-27): `safety` and `fuel_card`.** Both are written to S3 (`safety_incidents`: 1 file, `fuel_purchases`: 89 files).
 3. **Reefer stream in Kafka:** is there a Kafka Connect folder for `fleet.reefer.v1`, or only `telemetry.raw`?
 4. **Topic and folder naming:** the topics are `fleet.telemetry.v1` but the S3 folder is `telemetry.raw`. Agree on one scheme.
 5. **Kafka listens on `127.0.0.1` only,** so Spark must run on the same EC2 instance, or the listeners must change (with security group rules).
-6. **What is in `bronze/reference/`?**
+6. ✅ **Resolved (2026-10-27): `bronze/reference/`** does not exist in the bucket.
 7. **`DIRECT_S3_PCT`:** trucks that write directly to S3 never reach Kafka, so they are missing from the live dashboard. Set it to 0, or document this.
 
 ---
